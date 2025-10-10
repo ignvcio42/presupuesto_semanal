@@ -12,9 +12,10 @@ interface WeekCardProps {
   onCloseWeek?: (weekId: string) => void;
   onViewDetails?: (weekId: string) => void;
   isCurrentWeek?: boolean;
+  budgetMode?: 'simple' | 'categorized';
 }
 
-export function WeekCard({ week, onCloseWeek, onViewDetails, isCurrentWeek }: WeekCardProps) {
+export function WeekCard({ week, onCloseWeek, onViewDetails, isCurrentWeek, budgetMode }: WeekCardProps) {
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [detailsModalOpened, setDetailsModalOpened] = useState(false);
   const percentageRemaining = 100 - week.percentageUsed;
@@ -237,6 +238,7 @@ export function WeekCard({ week, onCloseWeek, onViewDetails, isCurrentWeek }: We
         weekNumber={week.weekNumber}
         startDate={week.startDate}
         endDate={week.endDate}
+        budgetMode={budgetMode}
       />
     </Card>
   );

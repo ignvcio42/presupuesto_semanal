@@ -97,8 +97,8 @@ export const budgetRouter = createTRPCRouter({
         }
       }
 
-      // Si se actualizó el presupuesto mensual, actualizar las semanas existentes
-      if (input.monthlyBudget && input.monthlyBudget > 0) {
+      // Si se actualizó el presupuesto mensual o se cambió el modo, actualizar las semanas existentes
+      if ((input.monthlyBudget && input.monthlyBudget > 0) || (input.budgetMode && input.budgetMode !== user.budgetMode)) {
         // Buscar el historial mensual actual
         const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
           where: {
@@ -119,13 +119,14 @@ export const budgetRouter = createTRPCRouter({
 
         if (monthlyHistory) {
           // Actualizar el presupuesto total del historial
+          const budgetToUse = input.monthlyBudget || user.monthlyBudget || 0;
           await ctx.db.monthlyHistory.update({
             where: { id: monthlyHistory.id },
-            data: { totalBudget: input.monthlyBudget },
+            data: { totalBudget: budgetToUse },
           });
 
-          // Recalcular las semanas con el nuevo presupuesto
-          const monthInfo = getWeeksOfMonth(year, month, input.monthlyBudget);
+          // Recalcular las semanas con el nuevo presupuesto (o el actual si no se cambió)
+          const monthInfo = getWeeksOfMonth(year, month, budgetToUse);
           
           // Actualizar cada semana existente
           for (let i = 0; i < monthlyHistory.weeks.length; i++) {
@@ -133,8 +134,12 @@ export const budgetRouter = createTRPCRouter({
             const newWeekInfo = monthInfo.weeks[i];
             
             if (existingWeek && newWeekInfo) {
+              // Calcular el rollover basado en el presupuesto original y el gasto
+              const originalWeeklyBudget = (user.monthlyBudget || 0) / 4.33; // Presupuesto semanal base
+              const currentRollover = existingWeek.weeklyBudget - originalWeeklyBudget;
+              
               // Calcular el nuevo presupuesto semanal manteniendo el rollover existente
-              const newWeeklyBudget = newWeekInfo.weeklyBudget + (existingWeek.rolloverAmount || 0);
+              const newWeeklyBudget = newWeekInfo.weeklyBudget + currentRollover;
               
               // Actualizar la semana
               await ctx.db.week.update({
@@ -144,7 +149,7 @@ export const budgetRouter = createTRPCRouter({
                 },
               });
 
-              // Actualizar las asignaciones por categoría si es modo categorizado
+              // Actualizar las asignaciones por categoría según el modo
               if (input.budgetMode === 'categorized') {
                 const categories = await ctx.db.category.findMany({
                   where: { userId: user.id },
@@ -167,12 +172,18 @@ export const budgetRouter = createTRPCRouter({
                     })
                   )
                 );
+              } else if (input.budgetMode === 'simple') {
+                // Eliminar todas las asignaciones por categoría para modo simple
+                await ctx.db.weekCategory.deleteMany({
+                  where: { weekId: existingWeek.id },
+                });
               }
             }
           }
         } else {
           // Si no existe historial, crear las semanas del mes actual
-          const monthInfo = getWeeksOfMonth(year, month, input.monthlyBudget);
+          const budgetToUse = input.monthlyBudget || user.monthlyBudget || 0;
+          const monthInfo = getWeeksOfMonth(year, month, budgetToUse);
           
           // Crear el historial mensual
           const newMonthlyHistory = await ctx.db.monthlyHistory.create({
@@ -180,7 +191,7 @@ export const budgetRouter = createTRPCRouter({
               userId: user.id,
               year,
               month,
-              totalBudget: input.monthlyBudget,
+              totalBudget: budgetToUse,
               totalSpent: 0,
               totalRollover: 0,
             },
@@ -376,6 +387,52 @@ export const budgetRouter = createTRPCRouter({
         )
       );
 
+      // Recalcular las asignaciones por categoría de todas las semanas existentes
+      const currentDate = new Date();
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1;
+
+      // Buscar el historial mensual actual
+      const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
+        where: {
+          userId_year_month: {
+            userId: user.id,
+            year,
+            month,
+          },
+        },
+        include: {
+          weeks: {
+            include: {
+              weekCategories: true,
+            },
+          },
+        },
+      });
+
+      if (monthlyHistory) {
+        // Actualizar cada semana existente
+        for (const week of monthlyHistory.weeks) {
+          // Eliminar asignaciones existentes
+          await ctx.db.weekCategory.deleteMany({
+            where: { weekId: week.id },
+          });
+
+          // Crear nuevas asignaciones con los porcentajes actualizados
+          await Promise.all(
+            input.allocations.map(({ categoryId, allocation }) =>
+              ctx.db.weekCategory.create({
+                data: {
+                  categoryId,
+                  weekId: week.id,
+                  allocatedAmount: (week.weeklyBudget * allocation) / 100,
+                },
+              })
+            )
+          );
+        }
+      }
+
       return { success: true };
     }),
 
@@ -407,6 +464,19 @@ export const budgetRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const user = await ctx.db.user.findFirst();
       if (!user) throw new Error('Usuario no encontrado');
+
+      // Validar que la categoría existe si se proporciona categoryId
+      if (input.categoryId) {
+        const category = await ctx.db.category.findUnique({
+          where: { id: input.categoryId },
+        });
+        if (!category) {
+          throw new Error('Categoría no encontrada');
+        }
+        if (category.userId !== user.id) {
+          throw new Error('Categoría no pertenece al usuario');
+        }
+      }
 
       // Encontrar la semana correspondiente a la fecha del gasto
       const expenseDate = input.date;

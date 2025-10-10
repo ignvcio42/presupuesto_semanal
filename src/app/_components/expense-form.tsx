@@ -54,6 +54,9 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess 
   React.useEffect(() => {
     if (budgetMode === 'categorized' && categories.length > 0 && !form.values.categoryId && categories[0]) {
       form.setFieldValue('categoryId', categories[0].id);
+    } else if (budgetMode === 'simple') {
+      // Limpiar categoryId cuando se cambia a modo simple
+      form.setFieldValue('categoryId', '');
     }
   }, [categories, form, budgetMode]);
 
@@ -94,6 +97,8 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess 
     const expenseData = {
       ...values,
       date: values.date instanceof Date ? values.date : new Date(values.date),
+      // No enviar categoryId si está en modo simple
+      categoryId: budgetMode === 'simple' ? undefined : values.categoryId,
     };
 
     setIsSubmitting(true);

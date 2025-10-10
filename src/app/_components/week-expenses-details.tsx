@@ -52,6 +52,7 @@ interface WeekExpensesDetailsProps {
   weekNumber: number;
   startDate: Date;
   endDate: Date;
+  budgetMode?: 'simple' | 'categorized';
 }
 
 export function WeekExpensesDetails({ 
@@ -60,7 +61,8 @@ export function WeekExpensesDetails({
   weekId, 
   weekNumber, 
   startDate, 
-  endDate 
+  endDate,
+  budgetMode = 'categorized'
 }: WeekExpensesDetailsProps) {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,7 +101,13 @@ export function WeekExpensesDetails({
     validate: {
       amount: (value) => (value <= 0 ? 'El monto debe ser mayor a 0' : null),
       description: (value) => (!value.trim() ? 'La descripción es requerida' : null),
-      categoryId: (value) => (!value ? 'Selecciona una categoría' : null),
+      categoryId: (value) => {
+        // Solo validar categoría si el modo es categorizado
+        if (budgetMode === 'categorized' && !value) {
+          return 'Selecciona una categoría';
+        }
+        return null;
+      },
     },
   });
 
@@ -118,9 +126,15 @@ export function WeekExpensesDetails({
 
     setIsSubmitting(true);
     try {
+      const updateData = {
+        ...values,
+        // No enviar categoryId si está en modo simple
+        categoryId: budgetMode === 'simple' ? undefined : values.categoryId,
+      };
+      
       await updateExpense.mutateAsync({
         id: editingExpense.id,
-        data: values,
+        data: updateData,
       });
     } catch (error) {
       console.error('Error al actualizar gasto:', error);
@@ -287,12 +301,14 @@ export function WeekExpensesDetails({
                     {...editForm.getInputProps('date')}
                   />
 
-                  <Select
-                    label="Categoría"
-                    placeholder="Selecciona una categoría"
-                    data={categoryOptions}
-                    {...editForm.getInputProps('categoryId')}
-                  />
+                  {budgetMode === 'categorized' && (
+                    <Select
+                      label="Categoría"
+                      placeholder="Selecciona una categoría"
+                      data={categoryOptions}
+                      {...editForm.getInputProps('categoryId')}
+                    />
+                  )}
 
                   <Group justify="flex-end" mt="md">
                     <Button

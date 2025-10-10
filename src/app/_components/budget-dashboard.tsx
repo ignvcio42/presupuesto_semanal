@@ -273,6 +273,7 @@ export function BudgetDashboard() {
                       week={currentWeek}
                       onCloseWeek={handleCloseWeek}
                       isCurrentWeek={true}
+                      budgetMode={user?.budgetMode as 'simple' | 'categorized'}
                     />
                     
                     {user.budgetMode === 'categorized' && (
@@ -373,6 +374,7 @@ export function BudgetDashboard() {
                     week={week}
                     onCloseWeek={handleCloseWeek}
                     isCurrentWeek={week.weekNumber === currentWeekNumber}
+                    budgetMode={user?.budgetMode as 'simple' | 'categorized'}
                   />
                 </Grid.Col>
               ))}
