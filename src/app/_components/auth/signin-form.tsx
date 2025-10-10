@@ -76,8 +76,8 @@ export function SignInForm({ onSwitchToRegister }: SignInFormProps) {
         // Pequeño delay para asegurar que la sesión se establezca
         setTimeout(() => {
           console.log('Ejecutando redirección...');
-          router.push('/');
-          router.refresh();
+          // Forzar recarga completa de la página
+          window.location.href = '/';
         }, 1000);
       }
     } catch {

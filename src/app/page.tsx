@@ -43,6 +43,7 @@ export default function Home() {
   }, [session, status, router, utils]);
 
   if (status === 'loading') {
+    console.log('Home - Rendering loading state');
     return (
       <Center style={{ minHeight: '100vh' }}>
         <Loader size="lg" />
@@ -51,8 +52,11 @@ export default function Home() {
   }
 
   if (!session) {
+    console.log('Home - No session, returning null (will redirect)');
     return null; // Se redirigirá automáticamente
   }
+
+  console.log('Home - Rendering BudgetApp with session:', session.user.email);
 
   return (
     <main className="min-h-screen bg-gray-50">
