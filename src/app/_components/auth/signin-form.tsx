@@ -69,8 +69,12 @@ export function SignInForm({ onSwitchToRegister }: SignInFormProps) {
           message: 'Has iniciado sesión correctamente',
           color: 'green',
         });
-        router.push('/');
-        router.refresh();
+        
+        // Pequeño delay para asegurar que la sesión se establezca
+        setTimeout(() => {
+          router.push('/');
+          router.refresh();
+        }, 100);
       }
     } catch {
       setError('Error al iniciar sesión');

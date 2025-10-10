@@ -118,7 +118,7 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
  */
 export const protectedProcedure = t.procedure.use(timingMiddleware).use(({ ctx, next }) => {
   if (!ctx.session || !ctx.session.user) {
-    throw new Error('UNAUTHORIZED');
+    throw new Error('UNAUTHORIZED: No valid session found');
   }
   return next({
     ctx: {
