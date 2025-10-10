@@ -203,7 +203,7 @@ export function getDefaultCategories() {
     { name: 'Comida personal', minPercentage: 30, maxPercentage: 35, suggestedPercentage: 40 },
     { name: 'Transporte/Bencina', minPercentage: 10, maxPercentage: 15, suggestedPercentage: 2 },
     { name: 'Gustos pequeños', minPercentage: 10, maxPercentage: 15, suggestedPercentage: 40 },
-    { name: 'Suplementos', minPercentage: 5, maxPercentage: 10, suggestedPercentage: 7.5 },
+    { name: 'Suplementos', minPercentage: 5, maxPercentage: 10, suggestedPercentage: 5 },
     { name: 'Otros', minPercentage: 5, maxPercentage: 10, suggestedPercentage: 13 },
   ];
 }
