@@ -73,9 +73,14 @@ export function CategoryProgress({ categories, totalBudget, totalSpent }: Catego
             />
             
             <Group justify="space-between">
+              <div className='flex gap-10 items-center'>
               <Text size="xs" c="dimmed">
                 Gastado: {formatCurrency(category.spentAmount)}
               </Text>
+              <Text size="xs" c="dimmed">
+                Restante: {formatCurrency(category.allocatedAmount - category.spentAmount)}
+              </Text>
+              </div>
               <Text size="xs" c="dimmed">
                 Presupuesto: {formatCurrency(category.allocatedAmount)}
               </Text>
