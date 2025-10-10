@@ -628,6 +628,16 @@ export const budgetRouter = createTRPCRouter({
         });
       }
 
+      // Actualizar el total gastado en el historial mensual
+      await ctx.db.monthlyHistory.update({
+        where: { id: dbWeek!.monthlyHistoryId },
+        data: {
+          totalSpent: {
+            increment: input.amount,
+          },
+        },
+      });
+
       // Si la semana ya está cerrada, recalcular el rollover y ajustar la siguiente semana
       if (dbWeek.isClosed) {
         const newRollover = calculateRollover(dbWeek.weeklyBudget, dbWeek.spentAmount + input.amount);
@@ -748,6 +758,16 @@ export const budgetRouter = createTRPCRouter({
             },
           });
         }
+
+        // Actualizar el total gastado en el historial mensual
+        await ctx.db.monthlyHistory.update({
+          where: { id: expense.week.monthlyHistoryId },
+          data: {
+            totalSpent: {
+              increment: difference,
+            },
+          },
+        });
 
         // Si la semana está cerrada, recalcular el rollover
         if (expense.week.isClosed) {
@@ -874,6 +894,16 @@ export const budgetRouter = createTRPCRouter({
             },
           });
         }
+
+        // Actualizar el total gastado en el historial mensual
+        await ctx.db.monthlyHistory.update({
+          where: { id: expense.week.monthlyHistoryId },
+          data: {
+            totalSpent: {
+              decrement: expense.amount,
+            },
+          },
+        });
 
         // Si la semana está cerrada, recalcular el rollover
         if (expense.week.isClosed) {
@@ -1370,6 +1400,57 @@ export const budgetRouter = createTRPCRouter({
            { month: 'desc' },
          ],
        });
+     }),
+
+   // Función para recalcular el historial mensual
+   recalculateMonthlyHistory: publicProcedure
+     .input(getMonthDataSchema)
+     .mutation(async ({ ctx, input }) => {
+       const user = await ctx.db.user.findFirst();
+       if (!user) throw new Error('Usuario no encontrado');
+
+       // Buscar el historial mensual
+       const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
+         where: {
+           userId_year_month: {
+             userId: user.id,
+             year: input.year,
+             month: input.month,
+           },
+         },
+         include: {
+           weeks: true,
+         },
+       });
+
+       if (!monthlyHistory) throw new Error('Historial mensual no encontrado');
+
+       // Calcular el total gastado real sumando todos los gastos
+       const allExpenses = await ctx.db.expense.findMany({
+         where: {
+           userId: user.id,
+           weekId: {
+             in: monthlyHistory.weeks.map(w => w.id),
+           },
+         },
+       });
+
+       const realTotalSpent = allExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+
+       // Actualizar el historial mensual con el total real
+       const updatedHistory = await ctx.db.monthlyHistory.update({
+         where: { id: monthlyHistory.id },
+         data: {
+           totalSpent: realTotalSpent,
+         },
+       });
+
+       return {
+         success: true,
+         previousTotal: monthlyHistory.totalSpent,
+         newTotal: realTotalSpent,
+         difference: realTotalSpent - monthlyHistory.totalSpent,
+       };
      }),
 
    // Utilidad para crear semanas manualmente

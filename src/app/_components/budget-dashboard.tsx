@@ -36,7 +36,7 @@ import { CategoryProgress } from './category-progress';
 import { MonthlyHistory } from './monthly-history';
 import { CategorySettings } from './category-settings';
 import { MonthSelector } from './month-selector';
-import { DebugInfo } from './debug-info';
+// import { DebugInfo } from './debug-info';
 import { formatCurrency, getMonthName, getCurrentWeek } from '~/lib/date-utils';
 
 export function BudgetDashboard() {
@@ -247,8 +247,8 @@ export function BudgetDashboard() {
          </Group>
        </Group>
 
-       {/* Debug Info - Temporal */}
-       <DebugInfo />
+       {/* Debug Info - Temporal
+       <DebugInfo /> */}
 
       <Tabs value={activeTab} onChange={setActiveTab} mb="xl">
         <Tabs.List>
