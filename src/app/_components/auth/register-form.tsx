@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   Card,
   TextInput,
@@ -26,7 +25,6 @@ interface RegisterFormProps {
 export function RegisterForm({ onSwitchToSignIn }: RegisterFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const router = useRouter();
 
   const form = useForm({
     initialValues: {

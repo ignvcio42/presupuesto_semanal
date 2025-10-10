@@ -23,7 +23,6 @@ import {
 import { 
   IconSettings, 
   IconCalendar, 
-  IconTrendingUp, 
   IconAlertCircle,
   IconChartBar,
   IconHistory
@@ -53,8 +52,8 @@ export function BudgetDashboard() {
   const currentMonth = currentDate.getMonth() + 1;
   
   // Usar el mes seleccionado o el actual
-  const displayYear = selectedYear || currentYear;
-  const displayMonth = selectedMonth || currentMonth;
+  const displayYear = selectedYear ?? currentYear;
+  const displayMonth = selectedMonth ?? currentMonth;
 
   // Queries
   const { data: user, refetch: refetchUser } = api.budget.getUser.useQuery();
@@ -67,39 +66,39 @@ export function BudgetDashboard() {
   // Mutations
   const updateUser = api.budget.updateUser.useMutation({
     onSuccess: () => {
-      refetchUser();
-      refetchWeeks();
-      refetchCategories();
+      void refetchUser();
+      void refetchWeeks();
+      void refetchCategories();
       setSettingsOpened(false);
     },
   });
 
   const closeWeek = api.budget.closeWeek.useMutation({
     onSuccess: () => {
-      refetchWeeks();
+      void refetchWeeks();
     },
   });
 
   const createWeeks = api.budget.createWeeksForCurrentMonth.useMutation({
     onSuccess: () => {
-      refetchWeeks();
-      refetchUser();
+      void refetchWeeks();
+      void refetchUser();
     },
   });
 
   const resetBudget = api.budget.resetBudget.useMutation({
     onSuccess: () => {
-      refetchUser();
-      refetchWeeks();
-      refetchCategories();
+      void refetchUser();
+      void refetchWeeks();
+      void refetchCategories();
       setSettingsOpened(false);
     },
   });
 
   const settingsForm = useForm({
     initialValues: {
-      monthlyBudget: user?.monthlyBudget || 0,
-      budgetMode: (user?.budgetMode as 'simple' | 'categorized') || 'categorized',
+      monthlyBudget: user?.monthlyBudget ?? 0,
+      budgetMode: (user?.budgetMode as 'simple' | 'categorized') ?? 'categorized',
     },
   });
 
@@ -278,8 +277,8 @@ export function BudgetDashboard() {
                       isCurrentWeek={true}
                       budgetMode={user?.budgetMode as 'simple' | 'categorized'}
                       onExpenseUpdate={() => {
-                        refetchWeeks();
-                        refetchCategories();
+                        void refetchWeeks();
+                        void refetchCategories();
                       }}
                     />
                     
@@ -299,8 +298,8 @@ export function BudgetDashboard() {
                       categories={categories}
                       budgetMode={user?.budgetMode as 'simple' | 'categorized' | undefined}
                       onSuccess={() => {
-                        refetchWeeks();
-                        refetchCategories();
+                        void refetchWeeks();
+                        void refetchCategories();
                       }}
                     />
                     
@@ -383,8 +382,8 @@ export function BudgetDashboard() {
                     isCurrentWeek={week.weekNumber === currentWeekNumber}
                     budgetMode={user?.budgetMode as 'simple' | 'categorized'}
                     onExpenseUpdate={() => {
-                      refetchWeeks();
-                      refetchCategories();
+                      void refetchWeeks();
+                      void refetchCategories();
                     }}
                   />
                 </Grid.Col>
@@ -399,8 +398,8 @@ export function BudgetDashboard() {
                 <Button 
                   variant="light" 
                   onClick={() => {
-                    refetchWeeks();
-                    refetchUser();
+                    void refetchWeeks();
+                    void refetchUser();
                   }}
                 >
                   Recargar Datos
@@ -495,8 +494,8 @@ export function BudgetDashboard() {
         categories={categories}
         monthlyBudget={user?.monthlyBudget}
         onSuccess={() => {
-          refetchCategories();
-          refetchWeeks();
+          void refetchCategories();
+          void refetchWeeks();
         }}
       />
     </Container>

@@ -72,7 +72,7 @@ export function SignInForm({ onSwitchToRegister }: SignInFormProps) {
         router.push('/');
         router.refresh();
       }
-    } catch (error) {
+    } catch {
       setError('Error al iniciar sesión');
       notifications.show({
         title: 'Error',

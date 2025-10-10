@@ -4,7 +4,6 @@ import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import {
   Group,
-  Button,
   Text,
   Menu,
   Avatar,
@@ -38,7 +37,7 @@ export function Header() {
         color: 'blue',
       });
       router.push('/auth/signin');
-    } catch (error) {
+    } catch {
       notifications.show({
         title: 'Error',
         message: 'Error al cerrar sesión',

@@ -1,4 +1,4 @@
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addWeeks, isWithinInterval, getWeek, getYear } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addWeeks, isWithinInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // Zona horaria de Santiago
@@ -93,7 +93,7 @@ export function getCurrentWeek(year: number, month: number): number {
 /**
  * Formatea una fecha para mostrar en la UI
  */
-export function formatDate(date: Date, formatStr: string = 'dd/MM/yyyy'): string {
+export function formatDate(date: Date, formatStr = 'dd/MM/yyyy'): string {
   return format(date, formatStr, { locale: es });
 }
 
@@ -135,7 +135,7 @@ export function getMonthName(month: number): string {
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
-  return months[month - 1] || '';
+  return months[month - 1] ?? '';
 }
 
 /**

@@ -1,4 +1,4 @@
-import { NextAuthOptions } from 'next-auth';
+import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 // import { compare } from 'bcryptjs'; // TODO: Descomentar cuando se instale bcryptjs
 import { db } from '~/server/db';
@@ -54,7 +54,7 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (token) {
-        session.user.id = token.sub!;
+        session.user.id = token.sub ?? '';
         session.user.role = token.role as string;
       }
       return session;

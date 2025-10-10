@@ -23,7 +23,7 @@ export default function Home() {
 
     // Si cambió el usuario, limpiar cache
     if (previousUserId.current && previousUserId.current !== session.user.id) {
-      utils.invalidate();
+      void utils.invalidate();
     }
     
     previousUserId.current = session.user.id;

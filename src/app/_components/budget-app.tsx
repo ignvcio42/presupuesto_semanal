@@ -20,9 +20,9 @@ export function BudgetApp() {
     if (session?.user.id && previousUserId.current && previousUserId.current !== session.user.id) {
       setIsSetupComplete(false);
       // Invalidar todas las queries para el nuevo usuario
-      utils.invalidate();
+      void utils.invalidate();
     }
-    previousUserId.current = session?.user.id || null;
+    previousUserId.current = session?.user.id ?? null;
   }, [session?.user.id, utils]);
 
   const handleSetupComplete = () => {
