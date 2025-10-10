@@ -15,6 +15,11 @@ export function BudgetApp() {
   // Verificar si el usuario ya tiene configuración
   const { data: user, isLoading } = api.budget.getUser.useQuery();
 
+  console.log('BudgetApp - Session:', session);
+  console.log('BudgetApp - User:', user);
+  console.log('BudgetApp - Loading:', isLoading);
+  console.log('BudgetApp - isSetupComplete:', isSetupComplete);
+
   // Resetear estado cuando cambia el usuario
   useEffect(() => {
     if (session?.user.id && previousUserId.current && previousUserId.current !== session.user.id) {

@@ -13,16 +13,29 @@ export default function Home() {
   const utils = api.useUtils();
   const previousUserId = useRef<string | null>(null);
 
+  console.log('Home - Session:', session);
+  console.log('Home - Status:', status);
+  console.log('Home - Current path:', window.location.pathname);
+
   useEffect(() => {
-    if (status === 'loading') return;
+    console.log('Home useEffect - Status:', status, 'Session:', session);
+    
+    if (status === 'loading') {
+      console.log('Home - Status is loading, waiting...');
+      return;
+    }
     
     if (!session) {
+      console.log('Home - No session, redirecting to signin...');
       router.push('/auth/signin');
       return;
     }
 
+    console.log('Home - Session found, user ID:', session.user.id);
+
     // Si cambió el usuario, limpiar cache
     if (previousUserId.current && previousUserId.current !== session.user.id) {
+      console.log('Home - User changed, invalidating cache...');
       void utils.invalidate();
     }
     

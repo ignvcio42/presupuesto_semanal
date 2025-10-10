@@ -61,20 +61,24 @@ export function SignInForm({ onSwitchToRegister }: SignInFormProps) {
           icon: <IconAlertCircle size={16} />,
         });
       } else {
+        console.log('Login exitoso, limpiando cache...');
         // Limpiar cache antes de redirigir
         await utils.invalidate();
         
+        console.log('Cache limpiado, mostrando notificación...');
         notifications.show({
           title: 'Bienvenido',
           message: 'Has iniciado sesión correctamente',
           color: 'green',
         });
         
+        console.log('Redirigiendo en 1 segundo...');
         // Pequeño delay para asegurar que la sesión se establezca
         setTimeout(() => {
+          console.log('Ejecutando redirección...');
           router.push('/');
           router.refresh();
-        }, 100);
+        }, 1000);
       }
     } catch {
       setError('Error al iniciar sesión');
