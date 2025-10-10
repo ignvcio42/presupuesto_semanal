@@ -31,14 +31,16 @@ export function getWeeksOfMonth(year: number, month: number, totalBudget: number
   
   let weekNumber = 1;
   
+  // Continuar mientras la semana actual tenga al menos un día dentro del mes
   while (currentDate <= monthEnd) {
     const weekStart = currentDate;
     const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
     
     // Solo incluir semanas que tengan al menos un día del mes
-    const weekEndInMonth = weekEnd > monthEnd ? monthEnd : weekEnd;
-    
+    // Verificar que el inicio de la semana esté dentro del mes
     if (weekStart <= monthEnd) {
+      const weekEndInMonth = weekEnd > monthEnd ? monthEnd : weekEnd;
+      
       weeks.push({
         weekNumber,
         startDate: weekStart,
@@ -48,7 +50,13 @@ export function getWeeksOfMonth(year: number, month: number, totalBudget: number
       weekNumber++;
     }
     
+    // Avanzar a la siguiente semana
     currentDate = addWeeks(currentDate, 1);
+    
+    // Si la nueva fecha ya no tiene días en el mes, salir
+    if (currentDate > monthEnd) {
+      break;
+    }
   }
   
   return {

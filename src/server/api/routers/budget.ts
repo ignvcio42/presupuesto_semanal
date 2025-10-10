@@ -366,6 +366,29 @@ export const budgetRouter = createTRPCRouter({
   deleteCategory: publicProcedure
     .input(z.string())
     .mutation(async ({ ctx, input }) => {
+      const user = await ctx.db.user.findFirst();
+      if (!user) throw new Error('Usuario no encontrado');
+
+      // Verificar que la categoría existe y pertenece al usuario
+      const category = await ctx.db.category.findUnique({
+        where: { id: input },
+      });
+
+      if (!category) throw new Error('Categoría no encontrada');
+      if (category.userId !== user.id) throw new Error('Categoría no pertenece al usuario');
+
+      // Eliminar gastos asociados a esta categoría
+      await ctx.db.expense.updateMany({
+        where: { categoryId: input },
+        data: { categoryId: null },
+      });
+
+      // Eliminar asignaciones por categoría de las semanas
+      await ctx.db.weekCategory.deleteMany({
+        where: { categoryId: input },
+      });
+
+      // Eliminar la categoría
       return await ctx.db.category.delete({
         where: { id: input },
       });
