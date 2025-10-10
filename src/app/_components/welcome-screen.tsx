@@ -36,7 +36,7 @@ interface WelcomeScreenProps {
 
 export function WelcomeScreen({ onSetupComplete }: WelcomeScreenProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const { data: user } = api.budget.getUser.useQuery();
   const form = useForm({
     initialValues: {
       monthlyBudget: 0,
@@ -79,8 +79,8 @@ export function WelcomeScreen({ onSetupComplete }: WelcomeScreenProps) {
           <ThemeIcon size={80} radius="xl" color="blue" variant="light">
             <IconCurrency size={40} />
           </ThemeIcon>
-          <Title order={1} ta="center">
-            ¡Bienvenido a Finanzas Claras!
+          <Title order={1} ta="center" className="text-center">
+            ¡Bienvenido <span className="text-blue-600">{user?.name || ''}</span> a Finanzas Claras!
           </Title>
           <Text size="lg" c="dimmed" ta="center" maw={600}>
             Tu compañero para gestionar tu presupuesto semanal de manera inteligente. 

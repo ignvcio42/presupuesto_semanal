@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '~/server/api/trpc';
+import { createTRPCRouter, publicProcedure, protectedProcedure } from '~/server/api/trpc';
 import { 
   createUserSchema, 
   updateUserSchema, 
@@ -27,6 +27,10 @@ export const budgetRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const user = await ctx.db.user.create({
         data: {
+          name: 'Usuario Demo',
+          email: 'demo@example.com',
+          password: 'demo123',
+          role: 'user',
           monthlyBudget: input.monthlyBudget,
           budgetMode: input.budgetMode,
         },
@@ -47,15 +51,18 @@ export const budgetRouter = createTRPCRouter({
       return user;
     }),
 
-  updateUser: publicProcedure
+  updateUser: protectedProcedure
     .input(updateUserSchema)
     .mutation(async ({ ctx, input }) => {
-      // Por simplicidad, asumimos que hay un solo usuario
-      const user = await ctx.db.user.findFirst();
+      // Usar el usuario autenticado
+      const userId = ctx.session.user.id;
+      const user = await ctx.db.user.findUnique({
+        where: { id: userId }
+      });
       if (!user) throw new Error('Usuario no encontrado');
 
       const updatedUser = await ctx.db.user.update({
-        where: { id: user.id },
+        where: { id: userId },
         data: input,
       });
 
@@ -69,7 +76,7 @@ export const budgetRouter = createTRPCRouter({
         await ctx.db.weekCategory.deleteMany({
           where: {
             week: {
-              userId: user.id,
+              userId: userId,
               startDate: {
                 gte: new Date(year, month - 1, 1),
                 lt: new Date(year, month, 1),
@@ -77,23 +84,24 @@ export const budgetRouter = createTRPCRouter({
             },
           },
         });
+      }
 
-        // Si se cambió a modo categorizado, crear las categorías predeterminadas
-        if (input.budgetMode === 'categorized') {
-          const existingCategories = await ctx.db.category.findMany({
-            where: { userId: user.id },
+      // Crear categorías predeterminadas si el modo es 'categorized' y no existen categorías
+      const budgetModeToUse = input.budgetMode || user.budgetMode;
+      if (budgetModeToUse === 'categorized') {
+        const existingCategories = await ctx.db.category.findMany({
+          where: { userId: userId },
+        });
+
+        if (existingCategories.length === 0) {
+          const defaultCategories = getDefaultCategories();
+          await ctx.db.category.createMany({
+            data: defaultCategories.map(cat => ({
+              name: cat.name,
+              allocation: cat.suggestedPercentage,
+              userId: userId,
+            })),
           });
-
-          if (existingCategories.length === 0) {
-            const defaultCategories = getDefaultCategories();
-            await ctx.db.category.createMany({
-              data: defaultCategories.map(cat => ({
-                name: cat.name,
-                allocation: cat.suggestedPercentage,
-                userId: user.id,
-              })),
-            });
-          }
         }
       }
 
@@ -103,7 +111,7 @@ export const budgetRouter = createTRPCRouter({
         const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
           where: {
             userId_year_month: {
-              userId: user.id,
+              userId: userId,
               year,
               month,
             },
@@ -152,7 +160,7 @@ export const budgetRouter = createTRPCRouter({
               // Actualizar las asignaciones por categoría según el modo
               if (input.budgetMode === 'categorized') {
                 const categories = await ctx.db.category.findMany({
-                  where: { userId: user.id },
+                  where: { userId: userId },
                 });
 
                 // Eliminar asignaciones existentes
@@ -188,7 +196,7 @@ export const budgetRouter = createTRPCRouter({
           // Crear el historial mensual
           const newMonthlyHistory = await ctx.db.monthlyHistory.create({
             data: {
-              userId: user.id,
+              userId: userId,
               year,
               month,
               totalBudget: budgetToUse,
@@ -201,7 +209,7 @@ export const budgetRouter = createTRPCRouter({
           for (const week of monthInfo.weeks) {
             const dbWeek = await ctx.db.week.create({
               data: {
-                userId: user.id,
+                userId: userId,
                 weekNumber: week.weekNumber,
                 startDate: week.startDate,
                 endDate: week.endDate,
@@ -213,7 +221,7 @@ export const budgetRouter = createTRPCRouter({
             // Si el modo es por categorías, crear las asignaciones por categoría
             if (input.budgetMode === 'categorized') {
               const categories = await ctx.db.category.findMany({
-                where: { userId: user.id },
+                where: { userId: userId },
               });
 
               await Promise.all(
@@ -235,28 +243,29 @@ export const budgetRouter = createTRPCRouter({
       return updatedUser;
     }),
 
-  getUser: publicProcedure
+  getUser: protectedProcedure
     .query(async ({ ctx }) => {
-      let user = await ctx.db.user.findFirst();
+      // Obtener el usuario de la sesión autenticada
+      const userId = ctx.session.user.id;
+      let user = await ctx.db.user.findUnique({
+        where: { id: userId }
+      });
       
       if (!user) {
-        // Crear usuario por defecto
+        // Si no existe el usuario en la base de datos, crearlo
         user = await ctx.db.user.create({
           data: {
+            id: userId,
+            name: ctx.session.user.name || 'Usuario',
+            email: ctx.session.user.email || 'usuario@example.com',
+            password: 'temp', // Temporal, se actualizará después
+            role: 'user',
             monthlyBudget: 100000, // $100.000 CLP por defecto
             budgetMode: 'categorized',
           },
         });
 
-        // Crear categorías predeterminadas
-        const defaultCategories = getDefaultCategories();
-        await ctx.db.category.createMany({
-          data: defaultCategories.map(cat => ({
-            name: cat.name,
-            allocation: cat.suggestedPercentage,
-            userId: user!.id,
-          })),
-        });
+        // Las categorías se crean automáticamente en el registro
 
         // Crear las semanas del mes actual
         const currentDate = new Date();
@@ -267,7 +276,7 @@ export const budgetRouter = createTRPCRouter({
         // Crear el historial mensual
         const monthlyHistory = await ctx.db.monthlyHistory.create({
           data: {
-            userId: user.id,
+            userId: userId,
             year,
             month,
             totalBudget: 100000,
@@ -283,7 +292,7 @@ export const budgetRouter = createTRPCRouter({
           if (week.weekNumber > 1) {
             const previousWeek = await ctx.db.week.findFirst({
               where: {
-                userId: user.id,
+                userId: userId,
                 weekNumber: week.weekNumber - 1,
                 monthlyHistoryId: monthlyHistory.id,
               },
@@ -296,7 +305,7 @@ export const budgetRouter = createTRPCRouter({
 
           const dbWeek = await ctx.db.week.create({
             data: {
-              userId: user.id,
+              userId: userId,
               weekNumber: week.weekNumber,
               startDate: week.startDate,
               endDate: week.endDate,
@@ -308,7 +317,7 @@ export const budgetRouter = createTRPCRouter({
 
           // Crear las asignaciones por categoría
           const categories = await ctx.db.category.findMany({
-            where: { userId: user.id },
+            where: { userId: userId },
           });
 
           await Promise.all(
@@ -329,45 +338,53 @@ export const budgetRouter = createTRPCRouter({
     }),
 
   // Categorías
-  getCategories: publicProcedure
+  getCategories: protectedProcedure
     .query(async ({ ctx }) => {
-      const user = await ctx.db.user.findFirst();
-      if (!user) return [];
+      const userId = ctx.session.user.id;
 
       return await ctx.db.category.findMany({
-        where: { userId: user.id },
+        where: { userId },
         orderBy: { name: 'asc' },
       });
     }),
 
-  createCategory: publicProcedure
+  createCategory: protectedProcedure
     .input(createCategorySchema)
     .mutation(async ({ ctx, input }) => {
-      const user = await ctx.db.user.findFirst();
-      if (!user) throw new Error('Usuario no encontrado');
+      const userId = ctx.session.user.id;
 
       return await ctx.db.category.create({
         data: {
           ...input,
-          userId: user.id,
+          userId: userId,
         },
       });
     }),
 
-  updateCategory: publicProcedure
+  updateCategory: protectedProcedure
     .input(z.object({ id: z.string(), data: updateCategorySchema }))
     .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+      
+      // Verificar que la categoría pertenece al usuario
+      const category = await ctx.db.category.findUnique({
+        where: { id: input.id }
+      });
+      
+      if (!category || category.userId !== userId) {
+        throw new Error('Categoría no encontrada o no pertenece al usuario');
+      }
+
       return await ctx.db.category.update({
         where: { id: input.id },
         data: input.data,
       });
     }),
 
-  deleteCategory: publicProcedure
+  deleteCategory: protectedProcedure
     .input(z.string())
     .mutation(async ({ ctx, input }) => {
-      const user = await ctx.db.user.findFirst();
-      if (!user) throw new Error('Usuario no encontrado');
+      const userId = ctx.session.user.id;
 
       // Verificar que la categoría existe y pertenece al usuario
       const category = await ctx.db.category.findUnique({
@@ -375,7 +392,7 @@ export const budgetRouter = createTRPCRouter({
       });
 
       if (!category) throw new Error('Categoría no encontrada');
-      if (category.userId !== user.id) throw new Error('Categoría no pertenece al usuario');
+      if (category.userId !== userId) throw new Error('Categoría no pertenece al usuario');
 
       // Eliminar gastos asociados a esta categoría
       await ctx.db.expense.updateMany({
@@ -394,11 +411,10 @@ export const budgetRouter = createTRPCRouter({
       });
     }),
 
-  updateCategoryAllocations: publicProcedure
+  updateCategoryAllocations: protectedProcedure
     .input(updateCategoryAllocationsSchema)
     .mutation(async ({ ctx, input }) => {
-      const user = await ctx.db.user.findFirst();
-      if (!user) throw new Error('Usuario no encontrado');
+      const userId = ctx.session.user.id;
 
       // Actualizar todas las asignaciones
       await Promise.all(
@@ -416,14 +432,14 @@ export const budgetRouter = createTRPCRouter({
       const month = currentDate.getMonth() + 1;
 
       // Buscar el historial mensual actual
-      const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
-        where: {
-          userId_year_month: {
-            userId: user.id,
-            year,
-            month,
+        const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
+          where: {
+            userId_year_month: {
+              userId: userId,
+              year,
+              month,
+            },
           },
-        },
         include: {
           weeks: {
             include: {
@@ -460,18 +476,17 @@ export const budgetRouter = createTRPCRouter({
     }),
 
   // Gastos
-  getExpenses: publicProcedure
+  getExpenses: protectedProcedure
     .input(z.object({ 
       weekId: z.string().optional(),
       categoryId: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
-      const user = await ctx.db.user.findFirst();
-      if (!user) return [];
+      const userId = ctx.session.user.id;
 
       return await ctx.db.expense.findMany({
         where: {
-          userId: user.id,
+          userId: userId,
           ...(input.weekId && { weekId: input.weekId }),
           ...(input.categoryId && { categoryId: input.categoryId }),
         },
@@ -482,10 +497,13 @@ export const budgetRouter = createTRPCRouter({
       });
     }),
 
-  createExpense: publicProcedure
+  createExpense: protectedProcedure
     .input(createExpenseSchema)
     .mutation(async ({ ctx, input }) => {
-      const user = await ctx.db.user.findFirst();
+      const userId = ctx.session.user.id;
+      const user = await ctx.db.user.findUnique({
+        where: { id: userId }
+      });
       if (!user) throw new Error('Usuario no encontrado');
 
       // Validar que la categoría existe si se proporciona categoryId
@@ -496,7 +514,7 @@ export const budgetRouter = createTRPCRouter({
         if (!category) {
           throw new Error('Categoría no encontrada');
         }
-        if (category.userId !== user.id) {
+        if (category.userId !== userId) {
           throw new Error('Categoría no pertenece al usuario');
         }
       }
@@ -516,7 +534,7 @@ export const budgetRouter = createTRPCRouter({
       // Buscar o crear la semana en la base de datos
       let dbWeek = await ctx.db.week.findFirst({
         where: {
-          userId: user.id,
+          userId: userId,
           weekNumber: week.weekNumber,
           startDate: week.startDate,
         },
@@ -527,7 +545,7 @@ export const budgetRouter = createTRPCRouter({
         let monthlyHistory = await ctx.db.monthlyHistory.findUnique({
           where: {
             userId_year_month: {
-              userId: user.id,
+              userId: userId,
               year,
               month,
             },
@@ -537,7 +555,7 @@ export const budgetRouter = createTRPCRouter({
         if (!monthlyHistory) {
           monthlyHistory = await ctx.db.monthlyHistory.create({
             data: {
-              userId: user.id,
+              userId: userId,
               year,
               month,
               totalBudget: user.monthlyBudget || 0,
@@ -552,7 +570,7 @@ export const budgetRouter = createTRPCRouter({
         if (week.weekNumber > 1) {
           const previousWeek = await ctx.db.week.findFirst({
             where: {
-              userId: user.id,
+              userId: userId,
               weekNumber: week.weekNumber - 1,
               monthlyHistoryId: monthlyHistory.id,
             },
@@ -565,7 +583,7 @@ export const budgetRouter = createTRPCRouter({
 
         dbWeek = await ctx.db.week.create({
           data: {
-            userId: user.id,
+            userId: userId,
             weekNumber: week.weekNumber,
             startDate: week.startDate,
             endDate: week.endDate,
@@ -577,7 +595,7 @@ export const budgetRouter = createTRPCRouter({
         // Crear asignaciones por categoría para esta semana (solo si el modo es categorizado)
         if (user.budgetMode === 'categorized') {
           const categories = await ctx.db.category.findMany({
-            where: { userId: user.id },
+            where: { userId: userId },
           });
 
           await Promise.all(
@@ -598,7 +616,7 @@ export const budgetRouter = createTRPCRouter({
       const expense = await ctx.db.expense.create({
         data: {
           ...input,
-          userId: user.id,
+          userId: userId,
           weekId: dbWeek!.id,
         },
       });
@@ -656,7 +674,7 @@ export const budgetRouter = createTRPCRouter({
         if (rolloverDifference !== 0) {
           const nextWeek = await ctx.db.week.findFirst({
             where: {
-              userId: user.id,
+              userId: userId,
               weekNumber: dbWeek.weekNumber + 1,
               monthlyHistoryId: dbWeek.monthlyHistoryId,
             },
@@ -676,7 +694,7 @@ export const budgetRouter = createTRPCRouter({
             // Actualizar las asignaciones por categoría si es modo categorizado
             if (user.budgetMode === 'categorized') {
               const categories = await ctx.db.category.findMany({
-                where: { userId: user.id },
+                where: { userId: userId },
               });
 
               await Promise.all(
@@ -712,15 +730,17 @@ export const budgetRouter = createTRPCRouter({
       return expense;
     }),
 
-  updateExpense: publicProcedure
+  updateExpense: protectedProcedure
     .input(z.object({ id: z.string(), data: updateExpenseSchema }))
     .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
       const expense = await ctx.db.expense.findUnique({
         where: { id: input.id },
         include: { week: true },
       });
 
       if (!expense) throw new Error('Gasto no encontrado');
+      if (expense.userId !== userId) throw new Error('Gasto no pertenece al usuario');
 
       const oldAmount = expense.amount;
       const newAmount = input.data.amount || oldAmount;
@@ -854,15 +874,17 @@ export const budgetRouter = createTRPCRouter({
       return updatedExpense;
     }),
 
-  deleteExpense: publicProcedure
+  deleteExpense: protectedProcedure
     .input(z.string())
     .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
       const expense = await ctx.db.expense.findUnique({
         where: { id: input },
         include: { week: true },
       });
 
       if (!expense) throw new Error('Gasto no encontrado');
+      if (expense.userId !== userId) throw new Error('Gasto no pertenece al usuario');
 
       // Eliminar el gasto
       await ctx.db.expense.delete({
@@ -991,10 +1013,13 @@ export const budgetRouter = createTRPCRouter({
     }),
 
   // Semanas
-  getWeeks: publicProcedure
+  getWeeks: protectedProcedure
     .input(getMonthDataSchema)
     .query(async ({ ctx, input }) => {
-      const user = await ctx.db.user.findFirst();
+      const userId = ctx.session.user.id;
+      const user = await ctx.db.user.findUnique({
+        where: { id: userId }
+      });
       if (!user) return [];
 
       const monthInfo = getWeeksOfMonth(input.year, input.month, user.monthlyBudget || 0);
@@ -1003,7 +1028,7 @@ export const budgetRouter = createTRPCRouter({
       // Aplicar rollovers pendientes antes de consultar
       const closedWeeksWithRollover = await ctx.db.week.findMany({
         where: {
-          userId: user.id,
+          userId: userId,
           isClosed: true,
           rolloverAmount: {
             not: 0,
@@ -1020,7 +1045,7 @@ export const budgetRouter = createTRPCRouter({
       for (const closedWeek of closedWeeksWithRollover) {
         const nextWeek = await ctx.db.week.findFirst({
           where: {
-            userId: user.id,
+            userId: userId,
             weekNumber: closedWeek.weekNumber + 1,
             monthlyHistoryId: closedWeek.monthlyHistoryId,
           },
@@ -1045,7 +1070,7 @@ export const budgetRouter = createTRPCRouter({
             // Actualizar asignaciones por categoría si es modo categorizado
             if (user.budgetMode === 'categorized') {
               const categories = await ctx.db.category.findMany({
-                where: { userId: user.id },
+                where: { userId: userId },
               });
 
               await Promise.all(
@@ -1079,7 +1104,7 @@ export const budgetRouter = createTRPCRouter({
       // Auto-cerrar semanas vencidas antes de consultar
       const openWeeks = await ctx.db.week.findMany({
         where: {
-          userId: user.id,
+          userId: userId,
           isClosed: false,
           endDate: {
             lt: currentDate,
@@ -1107,7 +1132,7 @@ export const budgetRouter = createTRPCRouter({
         // Buscar la siguiente semana para aplicar el rollover
         const nextWeek = await ctx.db.week.findFirst({
           where: {
-            userId: user.id,
+            userId: userId,
             weekNumber: week.weekNumber + 1,
             monthlyHistoryId: week.monthlyHistoryId,
           },
@@ -1127,7 +1152,7 @@ export const budgetRouter = createTRPCRouter({
           // Actualizar las asignaciones por categoría si es modo categorizado
           if (user.budgetMode === 'categorized') {
             const categories = await ctx.db.category.findMany({
-              where: { userId: user.id },
+              where: { userId: userId },
             });
 
             await Promise.all(
@@ -1172,7 +1197,7 @@ export const budgetRouter = createTRPCRouter({
       
       const weeks = await ctx.db.week.findMany({
         where: {
-          userId: user.id,
+          userId: userId,
           startDate: {
             gte: monthInfo.weeks[0]?.startDate,
             lte: monthInfo.weeks[monthInfo.weeks.length - 1]?.endDate,
@@ -1207,15 +1232,17 @@ export const budgetRouter = createTRPCRouter({
       });
     }),
 
-  closeWeek: publicProcedure
+  closeWeek: protectedProcedure
     .input(closeWeekSchema)
     .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
       const week = await ctx.db.week.findUnique({
         where: { id: input.weekId },
         include: { monthlyHistory: true },
       });
 
       if (!week) throw new Error('Semana no encontrada');
+      if (week.userId !== userId) throw new Error('Semana no pertenece al usuario');
 
       const rollover = calculateRollover(week.weeklyBudget, week.spentAmount);
 
@@ -1301,16 +1328,15 @@ export const budgetRouter = createTRPCRouter({
     }),
 
   // Historial mensual
-  getMonthlyHistory: publicProcedure
+  getMonthlyHistory: protectedProcedure
     .input(getMonthDataSchema)
     .query(async ({ ctx, input }) => {
-      const user = await ctx.db.user.findFirst();
-      if (!user) return null;
+      const userId = ctx.session.user.id;
 
       const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
         where: {
           userId_year_month: {
-            userId: user.id,
+            userId: userId,
             year: input.year,
             month: input.month,
           },
@@ -1334,7 +1360,7 @@ export const budgetRouter = createTRPCRouter({
       // Calcular estadísticas
       const allExpenses = await ctx.db.expense.findMany({
         where: {
-          userId: user.id,
+          userId: userId,
           weekId: {
             in: monthlyHistory.weeks.map(w => w.id),
           },
@@ -1388,13 +1414,12 @@ export const budgetRouter = createTRPCRouter({
       };
     }),
 
-   getAllMonthlyHistory: publicProcedure
+   getAllMonthlyHistory: protectedProcedure
      .query(async ({ ctx }) => {
-       const user = await ctx.db.user.findFirst();
-       if (!user) return [];
+       const userId = ctx.session.user.id;
 
        return await ctx.db.monthlyHistory.findMany({
-         where: { userId: user.id },
+         where: { userId: userId },
          orderBy: [
            { year: 'desc' },
            { month: 'desc' },
@@ -1403,17 +1428,16 @@ export const budgetRouter = createTRPCRouter({
      }),
 
    // Función para recalcular el historial mensual
-   recalculateMonthlyHistory: publicProcedure
+   recalculateMonthlyHistory: protectedProcedure
      .input(getMonthDataSchema)
      .mutation(async ({ ctx, input }) => {
-       const user = await ctx.db.user.findFirst();
-       if (!user) throw new Error('Usuario no encontrado');
+       const userId = ctx.session.user.id;
 
        // Buscar el historial mensual
        const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
          where: {
            userId_year_month: {
-             userId: user.id,
+             userId: userId,
              year: input.year,
              month: input.month,
            },
@@ -1428,7 +1452,7 @@ export const budgetRouter = createTRPCRouter({
        // Calcular el total gastado real sumando todos los gastos
        const allExpenses = await ctx.db.expense.findMany({
          where: {
-           userId: user.id,
+           userId: userId,
            weekId: {
              in: monthlyHistory.weeks.map(w => w.id),
            },
@@ -1454,9 +1478,12 @@ export const budgetRouter = createTRPCRouter({
      }),
 
    // Utilidad para crear semanas manualmente
-   createWeeksForCurrentMonth: publicProcedure
+   createWeeksForCurrentMonth: protectedProcedure
      .mutation(async ({ ctx }) => {
-       const user = await ctx.db.user.findFirst();
+       const userId = ctx.session.user.id;
+       const user = await ctx.db.user.findUnique({
+         where: { id: userId }
+       });
        if (!user) throw new Error('Usuario no encontrado');
 
        const currentDate = new Date();
@@ -1466,7 +1493,7 @@ export const budgetRouter = createTRPCRouter({
        // Verificar si ya existen semanas para este mes
        const existingWeeks = await ctx.db.week.findMany({
          where: {
-           userId: user.id,
+           userId: userId,
            startDate: {
              gte: new Date(year, month - 1, 1),
              lt: new Date(year, month, 1),
@@ -1483,7 +1510,7 @@ export const budgetRouter = createTRPCRouter({
        // Crear el historial mensual
        const monthlyHistory = await ctx.db.monthlyHistory.create({
          data: {
-           userId: user.id,
+           userId: userId,
            year,
            month,
            totalBudget: user.monthlyBudget || 0,
@@ -1499,7 +1526,7 @@ export const budgetRouter = createTRPCRouter({
          if (week.weekNumber > 1) {
            const previousWeek = await ctx.db.week.findFirst({
              where: {
-               userId: user.id,
+               userId: userId,
                weekNumber: week.weekNumber - 1,
                monthlyHistoryId: monthlyHistory.id,
              },
@@ -1512,7 +1539,7 @@ export const budgetRouter = createTRPCRouter({
 
          const dbWeek = await ctx.db.week.create({
            data: {
-             userId: user.id,
+             userId: userId,
              weekNumber: week.weekNumber,
              startDate: week.startDate,
              endDate: week.endDate,
@@ -1525,7 +1552,7 @@ export const budgetRouter = createTRPCRouter({
          // Si el modo es por categorías, crear las asignaciones por categoría
          if (user.budgetMode === 'categorized') {
            const categories = await ctx.db.category.findMany({
-             where: { userId: user.id },
+             where: { userId: userId },
            });
 
            await Promise.all(
@@ -1546,9 +1573,12 @@ export const budgetRouter = createTRPCRouter({
      }),
 
    // Auto-cerrar semanas y aplicar rollovers
-   autoCloseWeeks: publicProcedure
+   autoCloseWeeks: protectedProcedure
      .mutation(async ({ ctx }) => {
-       const user = await ctx.db.user.findFirst();
+       const userId = ctx.session.user.id;
+       const user = await ctx.db.user.findUnique({
+         where: { id: userId }
+       });
        if (!user) throw new Error('Usuario no encontrado');
 
        const currentDate = new Date();
@@ -1558,7 +1588,7 @@ export const budgetRouter = createTRPCRouter({
        // Buscar semanas abiertas que deberían estar cerradas (fecha de fin pasada)
        const openWeeks = await ctx.db.week.findMany({
          where: {
-           userId: user.id,
+           userId: userId,
            isClosed: false,
            endDate: {
              lt: currentDate,
@@ -1591,7 +1621,7 @@ export const budgetRouter = createTRPCRouter({
          // Buscar la siguiente semana para aplicar el rollover
          const nextWeek = await ctx.db.week.findFirst({
            where: {
-             userId: user.id,
+             userId: userId,
              weekNumber: week.weekNumber + 1,
              monthlyHistoryId: week.monthlyHistoryId,
            },
@@ -1611,7 +1641,7 @@ export const budgetRouter = createTRPCRouter({
            // Actualizar las asignaciones por categoría si es modo categorizado
            if (user.budgetMode === 'categorized') {
              const categories = await ctx.db.category.findMany({
-               where: { userId: user.id },
+               where: { userId: userId },
              });
 
              await Promise.all(
@@ -1664,9 +1694,12 @@ export const budgetRouter = createTRPCRouter({
      }),
 
    // Aplicar rollovers pendientes
-   applyPendingRollovers: publicProcedure
+   applyPendingRollovers: protectedProcedure
      .mutation(async ({ ctx }) => {
-       const user = await ctx.db.user.findFirst();
+       const userId = ctx.session.user.id;
+       const user = await ctx.db.user.findUnique({
+         where: { id: userId }
+       });
        if (!user) throw new Error('Usuario no encontrado');
 
        const currentDate = new Date();
@@ -1676,7 +1709,7 @@ export const budgetRouter = createTRPCRouter({
        // Buscar semanas cerradas con rollover que no se han aplicado
        const closedWeeks = await ctx.db.week.findMany({
          where: {
-           userId: user.id,
+           userId: userId,
            isClosed: true,
            rolloverAmount: {
              not: 0,
@@ -1695,7 +1728,7 @@ export const budgetRouter = createTRPCRouter({
          // Buscar la siguiente semana
          const nextWeek = await ctx.db.week.findFirst({
            where: {
-             userId: user.id,
+             userId: userId,
              weekNumber: closedWeek.weekNumber + 1,
              monthlyHistoryId: closedWeek.monthlyHistoryId,
            },
@@ -1720,7 +1753,7 @@ export const budgetRouter = createTRPCRouter({
              // Actualizar asignaciones por categoría si es modo categorizado
              if (user.budgetMode === 'categorized') {
                const categories = await ctx.db.category.findMany({
-                 where: { userId: user.id },
+                 where: { userId: userId },
                });
 
                await Promise.all(
@@ -1762,36 +1795,39 @@ export const budgetRouter = createTRPCRouter({
      }),
 
    // Reiniciar todo el presupuesto
-   resetBudget: publicProcedure
+   resetBudget: protectedProcedure
      .mutation(async ({ ctx }) => {
-       const user = await ctx.db.user.findFirst();
+       const userId = ctx.session.user.id;
+       const user = await ctx.db.user.findUnique({
+         where: { id: userId }
+       });
        if (!user) throw new Error('Usuario no encontrado');
 
        // Eliminar todos los gastos
        await ctx.db.expense.deleteMany({
-         where: { userId: user.id },
+         where: { userId: userId },
        });
 
        // Eliminar todas las asignaciones por categoría
        await ctx.db.weekCategory.deleteMany({
          where: {
-           week: { userId: user.id },
+           week: { userId: userId },
          },
        });
 
        // Eliminar todas las semanas
        await ctx.db.week.deleteMany({
-         where: { userId: user.id },
+         where: { userId: userId },
        });
 
        // Eliminar todo el historial mensual
        await ctx.db.monthlyHistory.deleteMany({
-         where: { userId: user.id },
+         where: { userId: userId },
        });
 
        // Eliminar todas las categorías
        await ctx.db.category.deleteMany({
-         where: { userId: user.id },
+         where: { userId: userId },
        });
 
        // Crear categorías predeterminadas si el modo es categorizado
@@ -1801,7 +1837,7 @@ export const budgetRouter = createTRPCRouter({
            data: defaultCategories.map(cat => ({
              name: cat.name,
              allocation: cat.suggestedPercentage,
-             userId: user.id,
+             userId: userId,
            })),
          });
        }
@@ -1815,7 +1851,7 @@ export const budgetRouter = createTRPCRouter({
        // Crear el historial mensual
        const monthlyHistory = await ctx.db.monthlyHistory.create({
          data: {
-           userId: user.id,
+           userId: userId,
            year,
            month,
            totalBudget: user.monthlyBudget || 0,
@@ -1831,7 +1867,7 @@ export const budgetRouter = createTRPCRouter({
          if (week.weekNumber > 1) {
            const previousWeek = await ctx.db.week.findFirst({
              where: {
-               userId: user.id,
+               userId: userId,
                weekNumber: week.weekNumber - 1,
                monthlyHistoryId: monthlyHistory.id,
              },
@@ -1844,7 +1880,7 @@ export const budgetRouter = createTRPCRouter({
 
          const dbWeek = await ctx.db.week.create({
            data: {
-             userId: user.id,
+             userId: userId,
              weekNumber: week.weekNumber,
              startDate: week.startDate,
              endDate: week.endDate,
@@ -1857,7 +1893,7 @@ export const budgetRouter = createTRPCRouter({
          // Crear las asignaciones por categoría si es modo categorizado
          if (user.budgetMode === 'categorized') {
            const categories = await ctx.db.category.findMany({
-             where: { userId: user.id },
+             where: { userId: userId },
            });
 
            await Promise.all(
@@ -1879,4 +1915,101 @@ export const budgetRouter = createTRPCRouter({
          weeksCreated: monthInfo.weeks.length 
        };
      }),
+
+  // Consultas de administrador
+  getAdminStats: publicProcedure
+    .query(async ({ ctx }) => {
+      const users = await ctx.db.user.findMany({
+        include: {
+          expenses: true,
+        },
+      });
+
+      const totalUsers = users.length;
+      const totalBudget = users.reduce((sum, user) => sum + (user.monthlyBudget || 0), 0);
+      const totalSpent = users.reduce((sum, user) => {
+        const userSpent = user.expenses.reduce((expenseSum, expense) => expenseSum + expense.amount, 0);
+        return sum + userSpent;
+      }, 0);
+
+      return {
+        totalUsers,
+        totalBudget,
+        totalSpent,
+      };
+    }),
+
+  getAllUsers: publicProcedure
+    .query(async ({ ctx }) => {
+      const users = await ctx.db.user.findMany({
+        include: {
+          expenses: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      return users.map(user => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        monthlyBudget: user.monthlyBudget,
+        totalSpent: user.expenses.reduce((sum, expense) => sum + expense.amount, 0),
+        createdAt: user.createdAt,
+      }));
+    }),
+
+  // Eliminar usuario (solo para admin)
+  deleteUser: publicProcedure
+    .input(z.string())
+    .mutation(async ({ ctx, input }) => {
+      const userId = input;
+
+      // Verificar que el usuario existe
+      const user = await ctx.db.user.findUnique({
+        where: { id: userId }
+      });
+
+      if (!user) {
+        throw new Error('Usuario no encontrado');
+      }
+
+      // Eliminar en orden correcto para evitar errores de integridad referencial
+      
+      // 1. Eliminar gastos
+      await ctx.db.expense.deleteMany({
+        where: { userId }
+      });
+
+      // 2. Eliminar asignaciones por categoría de las semanas
+      await ctx.db.weekCategory.deleteMany({
+        where: {
+          week: { userId }
+        }
+      });
+
+      // 3. Eliminar semanas
+      await ctx.db.week.deleteMany({
+        where: { userId }
+      });
+
+      // 4. Eliminar historial mensual
+      await ctx.db.monthlyHistory.deleteMany({
+        where: { userId }
+      });
+
+      // 5. Eliminar categorías
+      await ctx.db.category.deleteMany({
+        where: { userId }
+      });
+
+      // 6. Finalmente eliminar el usuario
+      await ctx.db.user.delete({
+        where: { id: userId }
+      });
+
+      return { success: true, message: 'Usuario eliminado correctamente' };
+    }),
  });

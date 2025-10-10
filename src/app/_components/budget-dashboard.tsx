@@ -36,6 +36,7 @@ import { CategoryProgress } from './category-progress';
 import { MonthlyHistory } from './monthly-history';
 import { CategorySettings } from './category-settings';
 import { MonthSelector } from './month-selector';
+import { Header } from './header';
 // import { DebugInfo } from './debug-info';
 import { formatCurrency, getMonthName, getCurrentWeek } from '~/lib/date-utils';
 
@@ -198,7 +199,9 @@ export function BudgetDashboard() {
   }
 
   return (
-    <Container size="xl" py="xl">
+    <>
+      <Header />
+      <Container size="xl" py="xl">
       <Group justify="space-between" mb="xl">
         <div>
           <Title order={1}>Presupuesto Semanal</Title>
@@ -497,5 +500,6 @@ export function BudgetDashboard() {
         }}
       />
     </Container>
+    </>
   );
 }

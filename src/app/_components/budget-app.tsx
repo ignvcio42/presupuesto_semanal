@@ -1,15 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 import { api } from '~/trpc/react';
 import { WelcomeScreen } from './welcome-screen';
 import { BudgetDashboard } from './budget-dashboard';
 
 export function BudgetApp() {
   const [isSetupComplete, setIsSetupComplete] = useState(false);
+  const { data: session } = useSession();
+  const utils = api.useUtils();
+  const previousUserId = useRef<string | null>(null);
 
   // Verificar si el usuario ya tiene configuración
   const { data: user, isLoading } = api.budget.getUser.useQuery();
+
+  // Resetear estado cuando cambia el usuario
+  useEffect(() => {
+    if (session?.user.id && previousUserId.current && previousUserId.current !== session.user.id) {
+      setIsSetupComplete(false);
+      // Invalidar todas las queries para el nuevo usuario
+      utils.invalidate();
+    }
+    previousUserId.current = session?.user.id || null;
+  }, [session?.user.id, utils]);
 
   const handleSetupComplete = () => {
     setIsSetupComplete(true);

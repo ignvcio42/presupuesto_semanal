@@ -9,6 +9,7 @@ import '@mantine/dates/styles.css';
 import '@mantine/notifications/styles.css';
 
 import { TRPCReactProvider } from "~/trpc/react";
+import { Providers } from "~/app/_components/providers/session-provider";
 
 export const metadata: Metadata = {
   title: "Presupuesto Semanal",
@@ -29,7 +30,9 @@ export default function RootLayout({
       <body>
         <MantineProvider theme={theme}>
           <Notifications />
-          <TRPCReactProvider>{children}</TRPCReactProvider>
+          <TRPCReactProvider>
+            <Providers>{children}</Providers>
+          </TRPCReactProvider>
         </MantineProvider>
       </body>
     </html>

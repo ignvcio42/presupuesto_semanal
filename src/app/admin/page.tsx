@@ -1,0 +1,372 @@
+'use client';
+
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import {
+  Container,
+  Title,
+  Grid,
+  Card,
+  Text,
+  Group,
+  Badge,
+  Stack,
+  Alert,
+  Table,
+  Progress,
+  Center,
+  Loader,
+  ActionIcon,
+  Modal,
+  Button,
+} from '@mantine/core';
+import { IconUsers, IconTrendingUp, IconAlertCircle, IconShield, IconTrash } from '@tabler/icons-react';
+import { notifications } from '@mantine/notifications';
+import { api } from '~/trpc/react';
+import { formatCurrency } from '~/lib/date-utils';
+import { Header } from '~/app/_components/header';
+
+export default function AdminDashboard() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [deleteModalOpened, setDeleteModalOpened] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<any>(null);
+
+  // Verificar si es admin
+  useEffect(() => {
+    if (status === 'loading') return;
+    
+    if (!session) {
+      router.push('/auth/signin');
+      return;
+    }
+    
+    if (session.user.role !== 'admin') {
+      router.push('/');
+      return;
+    }
+  }, [session, status, router]);
+
+  const { data: adminStats, isLoading: statsLoading } = api.budget.getAdminStats.useQuery(
+    undefined,
+    { enabled: session?.user.role === 'admin' }
+  );
+
+  const { data: users, isLoading: usersLoading, refetch: refetchUsers } = api.budget.getAllUsers.useQuery(
+    undefined,
+    { enabled: session?.user.role === 'admin' }
+  );
+
+  const deleteUser = api.budget.deleteUser.useMutation({
+    onSuccess: () => {
+      refetchUsers();
+      setDeleteModalOpened(false);
+      setUserToDelete(null);
+      notifications.show({
+        title: 'Usuario eliminado',
+        message: 'El usuario se ha eliminado correctamente',
+        color: 'green',
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        title: 'Error',
+        message: error.message || 'Error al eliminar usuario',
+        color: 'red',
+      });
+    },
+  });
+
+  const handleDeleteUser = (user: any) => {
+    setUserToDelete(user);
+    setDeleteModalOpened(true);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    await deleteUser.mutateAsync(userToDelete.id);
+  };
+
+  const createAdmin = api.auth.createAdmin.useMutation({
+    onSuccess: () => {
+      refetchUsers();
+      notifications.show({
+        title: 'Admin creado',
+        message: 'El usuario administrador se ha creado correctamente',
+        color: 'green',
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        title: 'Error',
+        message: error.message || 'Error al crear administrador',
+        color: 'red',
+      });
+    },
+  });
+
+  const handleCreateAdmin = () => {
+    createAdmin.mutateAsync({
+      name: 'Administrador',
+      email: 'admin@presupuesto.com',
+      password: 'admin123',
+    });
+  };
+
+  if (status === 'loading' || statsLoading || usersLoading) {
+    return (
+      <>
+        <Header />
+        <Container size="xl" py="xl">
+          <Center style={{ minHeight: '50vh' }}>
+            <Loader size="lg" />
+          </Center>
+        </Container>
+      </>
+    );
+  }
+
+  if (!session || session.user.role !== 'admin') {
+    return (
+      <>
+        <Header />
+        <Container size="xl" py="xl">
+          <Alert icon={<IconAlertCircle size={16} />} color="red">
+            No tienes permisos para acceder a esta página.
+          </Alert>
+        </Container>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Header />
+      <Container size="xl" py="xl">
+        <Stack gap="xl">
+          {/* Header */}
+          <Group justify="space-between">
+            <div>
+              <Title order={1}>
+                <Group gap="sm">
+                  <IconShield size={32} />
+                  Panel de Administración
+                </Group>
+              </Title>
+              <Text c="dimmed" size="lg">
+                Gestión y métricas de usuarios
+              </Text>
+            </div>
+            <Badge color="red" size="lg" variant="light">
+              Administrador
+            </Badge>
+          </Group>
+
+          {/* Estadísticas generales */}
+          <Grid>
+            <Grid.Col span={{ base: 12, md: 4 }}>
+              <Card withBorder p="lg">
+                <Group justify="space-between">
+                  <div>
+                    <Text size="sm" c="dimmed" tt="uppercase" fw={700}>
+                      Total Usuarios
+                    </Text>
+                    <Text size="xl" fw={700}>
+                      {adminStats?.totalUsers || 0}
+                    </Text>
+                  </div>
+                  <IconUsers size={32} color="blue" />
+                </Group>
+              </Card>
+            </Grid.Col>
+
+            <Grid.Col span={{ base: 12, md: 4 }}>
+              <Card withBorder p="lg">
+                <Group justify="space-between">
+                  <div>
+                    <Text size="sm" c="dimmed" tt="uppercase" fw={700}>
+                      Presupuesto Total
+                    </Text>
+                    <Text size="xl" fw={700}>
+                      {formatCurrency(adminStats?.totalBudget || 0)}
+                    </Text>
+                  </div>
+                  <IconTrendingUp size={32} color="green" />
+                </Group>
+              </Card>
+            </Grid.Col>
+
+            <Grid.Col span={{ base: 12, md: 4 }}>
+              <Card withBorder p="lg">
+                <Group justify="space-between">
+                  <div>
+                    <Text size="sm" c="dimmed" tt="uppercase" fw={700}>
+                      Gasto Total
+                    </Text>
+                    <Text size="xl" fw={700} c="red">
+                      {formatCurrency(adminStats?.totalSpent || 0)}
+                    </Text>
+                  </div>
+                  <IconAlertCircle size={32} color="red" />
+                </Group>
+              </Card>
+            </Grid.Col>
+          </Grid>
+
+          {/* Lista de usuarios */}
+          <Card withBorder>
+            <Stack gap="md">
+              <Group justify="space-between">
+                <Title order={3}>Usuarios Registrados</Title>
+                {!users?.some(u => u.role === 'admin') && (
+                  <Button
+                    variant="outline"
+                    color="red"
+                    size="sm"
+                    onClick={handleCreateAdmin}
+                    loading={createAdmin.isPending}
+                  >
+                    Crear Admin
+                  </Button>
+                )}
+              </Group>
+              
+              <Table>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Usuario</Table.Th>
+                    <Table.Th>Email</Table.Th>
+                    <Table.Th>Rol</Table.Th>
+                    <Table.Th>Presupuesto</Table.Th>
+                    <Table.Th>Gastado</Table.Th>
+                    <Table.Th>Progreso</Table.Th>
+                    <Table.Th>Acciones</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {users?.map((user) => {
+                    const progress = user.monthlyBudget 
+                      ? (user.totalSpent / user.monthlyBudget) * 100 
+                      : 0;
+                    
+                    return (
+                      <Table.Tr key={user.id}>
+                        <Table.Td>
+                          <Text fw={500}>{user.name}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" c="dimmed">{user.email}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge 
+                            color={user.role === 'admin' ? 'red' : 'blue'}
+                            variant="light"
+                            size="sm"
+                          >
+                            {user.role === 'admin' ? 'Admin' : 'Usuario'}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm">
+                            {user.monthlyBudget ? formatCurrency(user.monthlyBudget) : 'No configurado'}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" c="red">
+                            {formatCurrency(user.totalSpent)}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Progress 
+                            value={progress} 
+                            size="sm" 
+                            color={progress > 100 ? 'red' : progress > 80 ? 'yellow' : 'green'}
+                          />
+                          <Text size="xs" c="dimmed" mt={2}>
+                            {progress.toFixed(1)}%
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          {user.role !== 'admin' && (
+                            <ActionIcon
+                              variant="light"
+                              color="red"
+                              size="sm"
+                              onClick={() => handleDeleteUser(user)}
+                              loading={deleteUser.isPending}
+                            >
+                              <IconTrash size={14} />
+                            </ActionIcon>
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+            </Stack>
+          </Card>
+        </Stack>
+
+        {/* Modal de confirmación para eliminar usuario */}
+        <Modal
+          opened={deleteModalOpened}
+          onClose={() => {
+            setDeleteModalOpened(false);
+            setUserToDelete(null);
+          }}
+          title="Confirmar eliminación de usuario"
+          size="sm"
+        >
+          <Stack gap="md">
+            <Alert icon={<IconAlertCircle size={16} />} color="red" variant="light">
+              <Text size="sm">
+                ¿Estás seguro de que quieres eliminar este usuario?
+              </Text>
+              <Text size="xs" c="dimmed" mt="xs">
+                Esta acción eliminará TODOS los datos del usuario: gastos, categorías, semanas e historial.
+              </Text>
+            </Alert>
+
+            {userToDelete && (
+              <Card withBorder p="sm">
+                <Group justify="space-between">
+                  <Text size="sm" fw={500}>
+                    {userToDelete.name}
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    {userToDelete.email}
+                  </Text>
+                </Group>
+                <Badge size="xs" variant="light" color="blue" mt="xs">
+                  {userToDelete.role === 'admin' ? 'Admin' : 'Usuario'}
+                </Badge>
+              </Card>
+            )}
+
+            <Group justify="flex-end" mt="md">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDeleteModalOpened(false);
+                  setUserToDelete(null);
+                }}
+                disabled={deleteUser.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                color="red"
+                onClick={confirmDeleteUser}
+                loading={deleteUser.isPending}
+              >
+                Eliminar Usuario
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
+      </Container>
+    </>
+  );
+}

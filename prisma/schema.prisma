@@ -21,6 +21,10 @@ model Post {
 
 model User {
   id            String       @id @default(uuid())
+  email         String       @unique
+  name          String
+  password      String
+  role          String       @default("user") // 'admin' or 'user'
   monthlyBudget Float?
   budgetMode    String?      @default("categorized") // 'categorized' or 'simple'
   categories    Category[]
