@@ -1,20 +1,22 @@
 'use client';
 
-import { Card, Progress, Badge, Group, Text, Stack, Button, ActionIcon, Menu, Tooltip } from '@mantine/core';
-import { IconCalendar, IconTrendingUp, IconTrendingDown, IconX, IconDots, IconEdit, IconTrash, IconInfoCircle } from '@tabler/icons-react';
+import { useState } from 'react';
+import { Card, Progress, Badge, Group, Text, Stack, Button, ActionIcon, Collapse } from '@mantine/core';
+import { IconCalendar, IconTrendingUp, IconTrendingDown, IconX, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { formatCurrency, formatDate, getTrafficLightColor } from '~/lib/date-utils';
 import type { WeekResponse } from '~/lib/validations';
+import { WeekExpensesDetails } from './week-expenses-details';
 
 interface WeekCardProps {
   week: WeekResponse;
   onCloseWeek?: (weekId: string) => void;
   onViewDetails?: (weekId: string) => void;
-  onViewExpenses?: (weekId: string) => void;
   isCurrentWeek?: boolean;
-  showCloseButton?: boolean;
 }
 
-export function WeekCard({ week, onCloseWeek, onViewDetails, onViewExpenses, isCurrentWeek, showCloseButton = true }: WeekCardProps) {
+export function WeekCard({ week, onCloseWeek, onViewDetails, isCurrentWeek }: WeekCardProps) {
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
+  const [detailsModalOpened, setDetailsModalOpened] = useState(false);
   const percentageRemaining = 100 - week.percentageUsed;
   const trafficLightColor = getTrafficLightColor(week.percentageUsed);
   
@@ -42,122 +44,194 @@ export function WeekCard({ week, onCloseWeek, onViewDetails, onViewExpenses, isC
   };
 
   return (
-    <Card shadow="sm" padding="lg" radius="md" withBorder style={{ height: '100%' }}>
-      <Group justify="space-between" mb="md">
-        <Text fw={700} size="lg">Semana {week.weekNumber}</Text>
-        <Group gap="xs">
-          <div style={{ 
-            width: 12, 
-            height: 12, 
-            borderRadius: '50%', 
-            backgroundColor: getTrafficLightColor(week.percentageUsed) === 'green' ? '#51cf66' : 
-                            getTrafficLightColor(week.percentageUsed) === 'yellow' ? '#ffd43b' : '#ff6b6b' 
-          }} />
-          <Menu shadow="md" width={200}>
-            <Menu.Target>
-              <ActionIcon variant="subtle" color="gray" size="sm">
-                <IconDots size={16} />
-              </ActionIcon>
-            </Menu.Target>
-
-            <Menu.Dropdown>
-              <Menu.Item
-                leftSection={<IconEdit size={14} />}
-                onClick={() => onViewExpenses?.(week.id)}
-              >
-                Ver/Editar Gastos
-              </Menu.Item>
-              {onViewDetails && (
-                <Menu.Item
-                  leftSection={<IconCalendar size={14} />}
-                  onClick={() => onViewDetails(week.id)}
-                >
-                  Ver Detalles
-                </Menu.Item>
-              )}
-            </Menu.Dropdown>
-          </Menu>
+    <Card shadow="sm" padding="lg" radius="md" withBorder>
+      <Group justify="space-between" mb="xs">
+        <Group>
+          <IconCalendar size={16} />
+          <Text fw={500}>Semana {week.weekNumber}</Text>
+          {isCurrentWeek && (
+            <Badge color="blue" variant="light" size="sm">
+              Actual
+            </Badge>
+          )}
         </Group>
+        {getTrafficLightBadge()}
       </Group>
 
       <Text size="sm" c="dimmed" mb="md">
-        {formatDate(week.startDate, 'd')} - {formatDate(week.endDate, 'd')} de {formatDate(week.startDate, 'MMM')}
+        {formatDate(week.startDate)} - {formatDate(week.endDate)}
       </Text>
 
-      <Stack gap="md">
-        <div>
-          <Text fw={700} size="xl" mb="xs">
-            {formatCurrency(week.weeklyBudget - week.spentAmount)}
-          </Text>
-          <Text size="sm" c="dimmed">
-            Restante de {formatCurrency(week.weeklyBudget)}
-          </Text>
-        </div>
-
-        <Progress
-          value={week.percentageUsed}
-          color={getProgressColor()}
-          size="md"
-          radius="xl"
-          style={{ backgroundColor: '#f1f3f4' }}
-        />
-
+      <Stack gap="xs" mb="md">
         <Group justify="space-between">
-          <Text size="sm">Gastado: {formatCurrency(week.spentAmount)}</Text>
-          <Text size="sm" c="dimmed">
-            {week.percentageUsed.toFixed(1)}% del presupuesto
+          <Text size="sm">Presupuesto semanal:</Text>
+          <Text size="sm" fw={500}>
+            {formatCurrency(week.weeklyBudget)}
+          </Text>
+        </Group>
+        
+        <Group justify="space-between">
+          <Text size="sm">Gastado:</Text>
+          <Text size="sm" fw={500} c={week.spentAmount > week.weeklyBudget ? 'red' : 'dark'}>
+            {formatCurrency(week.spentAmount)}
           </Text>
         </Group>
 
-        {week.rolloverAmount > 0 && (
-          <Group gap="xs" mt="xs">
-            <IconTrendingUp size={16} color="green" />
-            <Text size="sm" c="green">
-              {formatCurrency(week.rolloverAmount)} de la semana anterior
-            </Text>
+        <Group justify="space-between">
+          <Text size="sm">Restante:</Text>
+          <Text 
+            size="sm" 
+            fw={500} 
+            c={week.weeklyBudget - week.spentAmount < 0 ? 'red' : 'green'}
+          >
+            {formatCurrency(week.weeklyBudget - week.spentAmount)}
+          </Text>
+        </Group>
+
+        {week.isClosed && week.rolloverAmount !== 0 && (
+          <Group justify="space-between">
+            <Text size="sm">Rollover aplicado:</Text>
+            <Group gap="xs">
+              {week.rolloverAmount > 0 ? (
+                <IconTrendingUp size={16} color="green" />
+              ) : (
+                <IconTrendingDown size={16} color="red" />
+              )}
+              <Text 
+                size="sm" 
+                fw={500} 
+                c={week.rolloverAmount > 0 ? 'green' : 'red'}
+              >
+                {week.rolloverAmount > 0 ? '+' : ''}{formatCurrency(week.rolloverAmount)}
+              </Text>
+            </Group>
           </Group>
         )}
 
-        {week.rolloverAmount < 0 && (
-          <Group gap="xs" mt="xs">
-            <IconTrendingDown size={16} color="red" />
-            <Text size="sm" c="red">
-              Déficit de {formatCurrency(Math.abs(week.rolloverAmount))}
+        {week.isClosed && week.rolloverAmount === 0 && (
+          <Group justify="space-between">
+            <Text size="sm">Rollover aplicado:</Text>
+            <Text size="sm" fw={500} c="gray">
+              $0 (sin cambios)
             </Text>
           </Group>
         )}
-
-        {isCurrentWeek && (
-          <Badge color="blue" variant="light" size="sm" style={{ alignSelf: 'flex-start' }}>
-            Semana Actual
-          </Badge>
+        
+        {!week.isClosed && (
+          <Group justify="space-between">
+            <Text size="sm">Rollover proyectado:</Text>
+            <Group gap="xs">
+              {week.weeklyBudget - week.spentAmount > 0 ? (
+                <IconTrendingUp size={16} color="green" />
+              ) : week.weeklyBudget - week.spentAmount < 0 ? (
+                <IconTrendingDown size={16} color="red" />
+              ) : null}
+              <Text 
+                size="sm" 
+                fw={500} 
+                c={week.weeklyBudget - week.spentAmount > 0 ? 'green' : week.weeklyBudget - week.spentAmount < 0 ? 'red' : 'dark'}
+              >
+                {week.weeklyBudget - week.spentAmount > 0 ? '+' : ''}{formatCurrency(week.weeklyBudget - week.spentAmount)}
+              </Text>
+            </Group>
+          </Group>
         )}
+      </Stack>
 
+      <div>
+        <Progress
+          value={week.percentageUsed}
+          color={getProgressColor()}
+          size="lg"
+          radius="xl"
+          mb="md"
+        />
+        <Text size="sm" ta="center" mt="xs">
+          {week.percentageUsed.toFixed(1)}%
+        </Text>
+      </div>
+
+      {week.categories && week.categories.length > 0 && (
+        <Stack gap="xs" mb="md">
+          <Group justify="space-between" align="center">
+            <Text size="sm" fw={500}>Por categorías:</Text>
+            {week.categories.length > 3 && (
+              <Button
+                variant="subtle"
+                size="xs"
+                rightSection={categoriesExpanded ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />}
+                onClick={() => setCategoriesExpanded(!categoriesExpanded)}
+              >
+                {categoriesExpanded ? 'Contraer' : 'Expandir'}
+              </Button>
+            )}
+          </Group>
+          
+          {week.categories.slice(0, 3).map((category) => (
+            <Group key={category.id} justify="space-between">
+              <Text size="xs" c="dimmed">{category.name}:</Text>
+              <Text size="xs">
+                {formatCurrency(category.spentAmount)} / {formatCurrency(category.allocatedAmount)}
+              </Text>
+            </Group>
+          ))}
+          
+          <Collapse in={categoriesExpanded}>
+            <Stack gap="xs" mt="xs">
+              {week.categories.slice(3).map((category) => (
+                <Group key={category.id} justify="space-between">
+                  <Text size="xs" c="dimmed">{category.name}:</Text>
+                  <Text size="xs">
+                    {formatCurrency(category.spentAmount)} / {formatCurrency(category.allocatedAmount)}
+                  </Text>
+                </Group>
+              ))}
+            </Stack>
+          </Collapse>
+          
+          {!categoriesExpanded && week.categories.length > 3 && (
+            <Text size="xs" c="dimmed">
+              +{week.categories.length - 3} categorías más
+            </Text>
+          )}
+        </Stack>
+      )}
+
+      <Group justify="space-between">
+        <Button
+          variant="light"
+          size="xs"
+          onClick={() => setDetailsModalOpened(true)}
+        >
+          Ver detalles
+        </Button>
+        
+        {!week.isClosed && (
+          <Button
+            variant="filled"
+            size="xs"
+            color="orange"
+            onClick={() => onCloseWeek?.(week.id)}
+          >
+            Cerrar semana
+          </Button>
+        )}
+        
         {week.isClosed && (
-          <Badge color="gray" variant="light" size="sm" style={{ alignSelf: 'flex-start' }}>
+          <Badge color="gray" variant="light">
             Cerrada
           </Badge>
         )}
+      </Group>
 
-        {!week.isClosed && showCloseButton && (
-          <Tooltip 
-            label="Cierra esta semana manualmente. El rollover se aplicará a la siguiente semana."
-            position="top"
-            withArrow
-          >
-            <Button
-              variant="light"
-              color="orange"
-              size="xs"
-              onClick={() => onCloseWeek?.(week.id)}
-              style={{ alignSelf: 'flex-start' }}
-              leftSection={<IconInfoCircle size={14} />}
-            >
-              Cerrar Semana
-            </Button>
-          </Tooltip>
-        )}
-      </Stack>
+      <WeekExpensesDetails
+        opened={detailsModalOpened}
+        onClose={() => setDetailsModalOpened(false)}
+        weekId={week.id}
+        weekNumber={week.weekNumber}
+        startDate={week.startDate}
+        endDate={week.endDate}
+      />
     </Card>
   );
 }

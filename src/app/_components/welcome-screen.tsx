@@ -55,6 +55,7 @@ export function WelcomeScreen({ onSetupComplete }: WelcomeScreenProps) {
       await utils.budget.getUser.invalidate();
       await utils.budget.getCategories.invalidate();
       await utils.budget.getWeeks.invalidate();
+      await utils.budget.getAllMonthlyHistory.invalidate();
       onSetupComplete();
     },
   });

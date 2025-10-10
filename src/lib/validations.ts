@@ -26,7 +26,7 @@ export const createExpenseSchema = z.object({
   amount: z.number().min(1, 'El monto debe ser mayor a 0'),
   description: z.string().min(1, 'La descripción es requerida').max(200, 'La descripción no puede exceder 200 caracteres'),
   date: z.date(),
-  categoryId: z.string().uuid('ID de categoría inválido'),
+  categoryId: z.string().uuid('ID de categoría inválido').optional(),
 });
 
 export const updateExpenseSchema = z.object({

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { 
   Modal, 
   Button, 
@@ -22,26 +22,45 @@ import type { CreateExpenseInput } from '~/lib/validations';
 
 interface ExpenseFormProps {
   categories: Array<{ id: string; name: string; allocation: number }>;
+  budgetMode?: 'simple' | 'categorized';
   onSuccess?: () => void;
 }
 
-export function ExpenseForm({ categories, onSuccess }: ExpenseFormProps) {
+export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess }: ExpenseFormProps) {
   const [opened, setOpened] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<CreateExpenseInput>({
     initialValues: {
-      amount: 0,
+      amount: 1,
       description: '',
       date: new Date(),
-      categoryId: categories[0]?.id || '',
+      categoryId: '',
     },
     validate: {
       amount: (value) => (value <= 0 ? 'El monto debe ser mayor a 0' : null),
       description: (value) => (!value.trim() ? 'La descripción es requerida' : null),
-      categoryId: (value) => (!value ? 'Selecciona una categoría' : null),
+      categoryId: (value) => {
+        // Solo validar categoría si el modo es categorizado
+        if (budgetMode === 'categorized' && !value) {
+          return 'Selecciona una categoría';
+        }
+        return null;
+      },
     },
   });
+
+  // Actualizar el categoryId cuando cambien las categorías (solo en modo categorizado)
+  React.useEffect(() => {
+    if (budgetMode === 'categorized' && categories.length > 0 && !form.values.categoryId && categories[0]) {
+      form.setFieldValue('categoryId', categories[0].id);
+    }
+  }, [categories, form, budgetMode]);
+
+  // Debug: mostrar el estado del formulario
+  console.log('Form values:', form.values);
+  console.log('Form errors:', form.errors);
+  console.log('Form isValid:', form.isValid());
 
   const createExpense = api.budget.createExpense.useMutation({
     onSuccess: () => {
@@ -54,10 +73,32 @@ export function ExpenseForm({ categories, onSuccess }: ExpenseFormProps) {
     },
   });
 
+  // Verificar si la fecha seleccionada es de una semana pasada
+  const selectedDate = form.values.date instanceof Date ? form.values.date : new Date(form.values.date);
+  const isPastWeek = selectedDate < new Date();
+
   const handleSubmit = async (values: CreateExpenseInput) => {
+    // Validación adicional antes de enviar
+    if (values.amount <= 0 || !values.description.trim()) {
+      console.error('Formulario inválido:', values);
+      return;
+    }
+
+    // Solo validar categoría si el modo es categorizado
+    if (budgetMode === 'categorized' && !values.categoryId) {
+      console.error('Formulario inválido: categoría requerida en modo categorizado', values);
+      return;
+    }
+
+    // Convertir la fecha a objeto Date si es string
+    const expenseData = {
+      ...values,
+      date: values.date instanceof Date ? values.date : new Date(values.date),
+    };
+
     setIsSubmitting(true);
     try {
-      await createExpense.mutateAsync(values);
+      await createExpense.mutateAsync(expenseData);
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -112,22 +153,39 @@ export function ExpenseForm({ categories, onSuccess }: ExpenseFormProps) {
               {...form.getInputProps('date')}
             />
 
-            <Select
-              label="Categoría"
-              placeholder="Selecciona una categoría"
-              data={categoryOptions}
-              {...form.getInputProps('categoryId')}
-            />
+            {budgetMode === 'categorized' && (
+              <Select
+                label="Categoría"
+                placeholder="Selecciona una categoría"
+                data={categoryOptions}
+                {...form.getInputProps('categoryId')}
+              />
+            )}
 
-            {form.values.amount > 0 && form.values.categoryId && (
+            {form.values.amount > 0 && (
               <Alert
                 icon={<IconAlertCircle size={16} />}
                 title="Resumen del gasto"
                 color="blue"
               >
                 <Text size="sm">
-                  <strong>{formatCurrency(form.values.amount)}</strong> en{' '}
-                  <strong>{categories.find(c => c.id === form.values.categoryId)?.name}</strong>
+                  <strong>{formatCurrency(form.values.amount)}</strong>
+                  {budgetMode === 'categorized' && form.values.categoryId && (
+                    <> en <strong>{categories.find(c => c.id === form.values.categoryId)?.name}</strong></>
+                  )}
+                </Text>
+              </Alert>
+            )}
+
+            {isPastWeek && (
+              <Alert
+                icon={<IconAlertCircle size={16} />}
+                title="Gasto en semana pasada"
+                color="orange"
+              >
+                <Text size="sm">
+                  Estás agregando un gasto a una semana que ya pasó. Esto ajustará automáticamente 
+                  el rollover y afectará el presupuesto de la siguiente semana.
                 </Text>
               </Alert>
             )}
@@ -141,9 +199,25 @@ export function ExpenseForm({ categories, onSuccess }: ExpenseFormProps) {
                 Cancelar
               </Button>
               <Button
+                variant="outline"
+                color="orange"
+                onClick={() => {
+                  console.log('Testing form submit with values:', form.values);
+                  handleSubmit(form.values);
+                }}
+                disabled={isSubmitting}
+              >
+                Test Submit
+              </Button>
+              <Button
                 type="submit"
                 loading={isSubmitting}
-                disabled={!form.isValid()}
+                disabled={
+                  isSubmitting || 
+                  form.values.amount < 1 || 
+                  !form.values.description.trim() || 
+                  (budgetMode === 'categorized' && !form.values.categoryId)
+                }
               >
                 Agregar Gasto
               </Button>

@@ -253,15 +253,17 @@ export function MonthlyHistory({ year, month }: MonthlyHistoryProps) {
             </Badge>
           </Group>
           
-          <Progress
-            value={Math.min(percentageUsed, 100)}
-            color={getTrafficLightColor(percentageUsed)}
-            size="xl"
-            radius="xl"
-          />
-          <Text size="sm" ta="center" c="dimmed">
-            {percentageUsed.toFixed(1)}%
-          </Text>
+          <div>
+            <Progress
+              value={Math.min(percentageUsed, 100)}
+              color={getTrafficLightColor(percentageUsed)}
+              size="xl"
+              radius="xl"
+            />
+            <Text size="sm" ta="center" mt="xs">
+              {percentageUsed.toFixed(1)}%
+            </Text>
+          </div>
           
           <Group justify="space-between">
             <Text size="sm" c="dimmed">

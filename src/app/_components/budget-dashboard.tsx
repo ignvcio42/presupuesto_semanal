@@ -17,7 +17,8 @@ import {
   Modal,
   NumberInput,
   Select,
-  Switch
+  Switch,
+  Divider
 } from '@mantine/core';
 import { 
   IconSettings, 
@@ -35,17 +36,12 @@ import { CategoryProgress } from './category-progress';
 import { MonthlyHistory } from './monthly-history';
 import { CategorySettings } from './category-settings';
 import { MonthSelector } from './month-selector';
-import { WeeklySummary } from './weekly-summary';
-import { WeekExpenses } from './week-expenses';
-import { BudgetManagement } from './budget-management';
+import { DebugInfo } from './debug-info';
 import { formatCurrency, getMonthName, getCurrentWeek } from '~/lib/date-utils';
 
 export function BudgetDashboard() {
   const [settingsOpened, setSettingsOpened] = useState(false);
   const [categorySettingsOpened, setCategorySettingsOpened] = useState(false);
-  const [budgetManagementOpened, setBudgetManagementOpened] = useState(false);
-  const [expensesModalOpened, setExpensesModalOpened] = useState(false);
-  const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string | null>('current');
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
@@ -71,6 +67,8 @@ export function BudgetDashboard() {
   const updateUser = api.budget.updateUser.useMutation({
     onSuccess: () => {
       refetchUser();
+      refetchWeeks();
+      refetchCategories();
       setSettingsOpened(false);
     },
   });
@@ -81,6 +79,22 @@ export function BudgetDashboard() {
     },
   });
 
+  const createWeeks = api.budget.createWeeksForCurrentMonth.useMutation({
+    onSuccess: () => {
+      refetchWeeks();
+      refetchUser();
+    },
+  });
+
+  const resetBudget = api.budget.resetBudget.useMutation({
+    onSuccess: () => {
+      refetchUser();
+      refetchWeeks();
+      refetchCategories();
+      setSettingsOpened(false);
+    },
+  });
+
   const settingsForm = useForm({
     initialValues: {
       monthlyBudget: user?.monthlyBudget || 0,
@@ -88,15 +102,25 @@ export function BudgetDashboard() {
     },
   });
 
+  // Detectar si el modo cambió
+  const modeChanged = settingsForm.values.budgetMode !== user?.budgetMode;
+
   const handleCloseWeek = async (weekId: string) => {
     const week = weeks?.find(w => w.id === weekId);
     if (!week) return;
 
+    const rollover = week.weeklyBudget - week.spentAmount;
+    const rolloverText = rollover > 0 
+      ? `Se transferirán ${formatCurrency(rollover)} a la siguiente semana`
+      : rollover < 0 
+      ? `Se descontarán ${formatCurrency(Math.abs(rollover))} de la siguiente semana`
+      : 'No hay rollover (gastaste exactamente el presupuesto)';
+
     const message = `¿Estás seguro de que quieres cerrar la Semana ${week.weekNumber}?\n\n` +
-      `Esto aplicará el rollover a la siguiente semana y no se puede deshacer.\n\n` +
-      `Gastado: ${formatCurrency(week.spentAmount)}\n` +
       `Presupuesto: ${formatCurrency(week.weeklyBudget)}\n` +
-      `Rollover: ${formatCurrency(week.weeklyBudget - week.spentAmount)}`;
+      `Gastado: ${formatCurrency(week.spentAmount)}\n` +
+      `Rollover: ${rolloverText}\n\n` +
+      `Esta acción no se puede deshacer.`;
 
     if (confirm(message)) {
       await closeWeek.mutateAsync({ weekId });
@@ -104,7 +128,36 @@ export function BudgetDashboard() {
   };
 
   const handleUpdateSettings = async (values: typeof settingsForm.values) => {
+    // Si el modo cambió, mostrar advertencia
+    if (modeChanged) {
+      const confirmed = confirm(
+        '⚠️ ADVERTENCIA: Cambiar el modo de presupuesto eliminará todas las asignaciones por categoría de las semanas actuales.\n\n' +
+        'Esto significa que perderás el progreso de las categorías en las semanas de este mes.\n\n' +
+        '¿Estás seguro de que quieres continuar?'
+      );
+      
+      if (!confirmed) {
+        return;
+      }
+    }
+    
     await updateUser.mutateAsync(values);
+  };
+
+  const handleResetBudget = async () => {
+    const confirmed = confirm(
+      '⚠️ ADVERTENCIA: Esto eliminará TODOS los datos del presupuesto:\n\n' +
+      '• Todos los gastos registrados\n' +
+      '• Todo el historial de meses\n' +
+      '• Todas las semanas y su progreso\n' +
+      '• Todas las categorías personalizadas\n\n' +
+      'Solo se mantendrá la configuración actual (presupuesto mensual y modo).\n\n' +
+      '¿Estás SEGURO de que quieres reiniciar todo?'
+    );
+    
+    if (confirmed) {
+      await resetBudget.mutateAsync();
+    }
   };
 
   const currentWeekNumber = getCurrentWeek(displayYear, displayMonth);
@@ -122,16 +175,6 @@ export function BudgetDashboard() {
     setSelectedMonth(null);
     setShowMonthSelector(false);
     setActiveTab('current');
-  };
-
-  const handleViewExpenses = (weekId: string) => {
-    setSelectedWeekId(weekId);
-    setExpensesModalOpened(true);
-  };
-
-  const handleCloseExpensesModal = () => {
-    setExpensesModalOpened(false);
-    setSelectedWeekId(null);
   };
 
   if (!user || !categories || !weeks) {
@@ -171,47 +214,41 @@ export function BudgetDashboard() {
           </Group>
         </div>
         
-        <Group>
-          <Button
-            variant="light"
-            size="sm"
-            onClick={() => setShowMonthSelector(true)}
-          >
-            Ver Historial
-          </Button>
-          
-          <Badge color="blue" variant="light" size="lg">
-            {formatCurrency(user.monthlyBudget || 0)} mensual
-          </Badge>
-          
-          {user.budgetMode === 'categorized' && (
-            <Button
-              variant="light"
-              size="sm"
-              onClick={() => setCategorySettingsOpened(true)}
-            >
-              Configurar Categorías
-            </Button>
-          )}
+         <Group>
+           <Button
+             variant="light"
+             size="sm"
+             onClick={() => setShowMonthSelector(true)}
+           >
+             Ver Historial
+           </Button>
+           
+           <Badge color="blue" variant="light" size="lg">
+             {formatCurrency(user.monthlyBudget || 0)} mensual
+           </Badge>
+           
+           {user.budgetMode === 'categorized' && (
+             <Button
+               variant="light"
+               size="sm"
+               onClick={() => setCategorySettingsOpened(true)}
+             >
+               Configurar Categorías
+             </Button>
+           )}
+           
+           <ActionIcon
+             variant="light"
+             size="lg"
+             onClick={() => setSettingsOpened(true)}
+           >
+             <IconSettings size={20} />
+           </ActionIcon>
+         </Group>
+       </Group>
 
-          <Button
-            variant="light"
-            color="orange"
-            size="sm"
-            onClick={() => setBudgetManagementOpened(true)}
-          >
-            Gestionar Presupuesto
-          </Button>
-          
-          <ActionIcon
-            variant="light"
-            size="lg"
-            onClick={() => setSettingsOpened(true)}
-          >
-            <IconSettings size={20} />
-          </ActionIcon>
-        </Group>
-      </Group>
+       {/* Debug Info - Temporal */}
+       <DebugInfo />
 
       <Tabs value={activeTab} onChange={setActiveTab} mb="xl">
         <Tabs.List>
@@ -219,7 +256,7 @@ export function BudgetDashboard() {
             Semana Actual
           </Tabs.Tab>
           <Tabs.Tab value="month" leftSection={<IconChartBar size={16} />}>
-            Resumen Semanal
+            Vista Mensual
           </Tabs.Tab>
           <Tabs.Tab value="history" leftSection={<IconHistory size={16} />}>
             Historial
@@ -232,13 +269,11 @@ export function BudgetDashboard() {
               <Grid>
                 <Grid.Col span={{ base: 12, md: 8 }}>
                   <Stack gap="md">
-                  <WeekCard
-                    week={currentWeek}
-                    onCloseWeek={handleCloseWeek}
-                    onViewExpenses={handleViewExpenses}
-                    isCurrentWeek={true}
-                    showCloseButton={true}
-                  />
+                    <WeekCard
+                      week={currentWeek}
+                      onCloseWeek={handleCloseWeek}
+                      isCurrentWeek={true}
+                    />
                     
                     {user.budgetMode === 'categorized' && (
                       <CategoryProgress
@@ -254,6 +289,7 @@ export function BudgetDashboard() {
                   <Stack gap="md">
                     <ExpenseForm
                       categories={categories}
+                      budgetMode={user?.budgetMode as 'simple' | 'categorized' | undefined}
                       onSuccess={() => {
                         refetchWeeks();
                         refetchCategories();
@@ -296,45 +332,76 @@ export function BudgetDashboard() {
               </Alert>
             )
           ) : (
-            <Alert icon={<IconAlertCircle size={16} />} title="No hay semanas configuradas">
-              <Text mb="md">
-                No se encontraron semanas para {getMonthName(displayMonth)} {displayYear}. 
-                Esto puede suceder si:
-              </Text>
-              <ul>
-                <li>No has configurado tu presupuesto mensual</li>
-                <li>Las semanas aún no se han creado</li>
-                <li>Hay un problema con la configuración</li>
-              </ul>
-              <Button 
-                variant="light" 
-                mt="md"
-                onClick={() => {
-                  refetchWeeks();
-                  refetchUser();
-                }}
-              >
-                Recargar Datos
-              </Button>
-            </Alert>
+             <Alert icon={<IconAlertCircle size={16} />} title="No hay semanas configuradas">
+               <Text mb="md">
+                 No se encontraron semanas para {getMonthName(displayMonth)} {displayYear}. 
+                 Esto puede suceder si:
+               </Text>
+               <ul>
+                 <li>No has configurado tu presupuesto mensual</li>
+                 <li>Las semanas aún no se han creado</li>
+                 <li>Hay un problema con la configuración</li>
+               </ul>
+               <Group mt="md">
+                 <Button 
+                   variant="light" 
+                   onClick={() => {
+                     refetchWeeks();
+                     refetchUser();
+                   }}
+                 >
+                   Recargar Datos
+                 </Button>
+                 <Button 
+                   variant="filled"
+                   loading={createWeeks.isPending}
+                   onClick={() => createWeeks.mutate()}
+                 >
+                   Crear Semanas
+                 </Button>
+               </Group>
+             </Alert>
           )}
         </Tabs.Panel>
 
         <Tabs.Panel value="month" pt="md">
-          <WeeklySummary
-            weeks={weeks}
-            monthlyBudget={user.monthlyBudget || 0}
-            onViewDetails={(weekId) => {
-              // Aquí puedes agregar lógica para ver detalles de la semana
-              console.log('Ver detalles de semana:', weekId);
-            }}
-            onViewExpenses={handleViewExpenses}
-            onCloseWeek={handleCloseWeek}
-            onAddExpense={() => {
-              // Cambiar al tab de semana actual para agregar gasto
-              setActiveTab('current');
-            }}
-          />
+          {weeks && weeks.length > 0 ? (
+            <Grid>
+              {weeks.map((week) => (
+                <Grid.Col key={week.id} span={{ base: 12, md: 6, lg: 4 }}>
+                  <WeekCard
+                    week={week}
+                    onCloseWeek={handleCloseWeek}
+                    isCurrentWeek={week.weekNumber === currentWeekNumber}
+                  />
+                </Grid.Col>
+              ))}
+            </Grid>
+          ) : (
+            <Alert icon={<IconAlertCircle size={16} />} title="No hay semanas configuradas">
+              <Text mb="md">
+                No se encontraron semanas para {getMonthName(displayMonth)} {displayYear}.
+              </Text>
+              <Group>
+                <Button 
+                  variant="light" 
+                  onClick={() => {
+                    refetchWeeks();
+                    refetchUser();
+                  }}
+                >
+                  Recargar Datos
+                </Button>
+                <Button 
+                  variant="filled"
+                  loading={createWeeks.isPending}
+                  onClick={() => createWeeks.mutate()}
+                >
+                  Crear Semanas
+                </Button>
+              </Group>
+            </Alert>
+          )}
         </Tabs.Panel>
 
         <Tabs.Panel value="history" pt="md">
@@ -371,16 +438,38 @@ export function BudgetDashboard() {
               {...settingsForm.getInputProps('budgetMode')}
             />
 
-            <Group justify="flex-end" mt="md">
+            {modeChanged && (
+              <Alert icon={<IconAlertCircle size={16} />} color="orange" title="Advertencia">
+                <Text size="sm">
+                  Cambiar el modo de presupuesto eliminará todas las asignaciones por categoría 
+                  de las semanas actuales. Perderás el progreso de las categorías en este mes.
+                </Text>
+              </Alert>
+            )}
+
+            <Divider />
+
+            <Group justify="space-between" mt="md">
               <Button
                 variant="outline"
-                onClick={() => setSettingsOpened(false)}
+                color="red"
+                onClick={handleResetBudget}
+                loading={resetBudget.isPending}
               >
-                Cancelar
+                Reiniciar Todo
               </Button>
-              <Button type="submit" loading={updateUser.isPending}>
-                Guardar
-              </Button>
+              
+              <Group>
+                <Button
+                  variant="outline"
+                  onClick={() => setSettingsOpened(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" loading={updateUser.isPending}>
+                  Guardar
+                </Button>
+              </Group>
             </Group>
           </Stack>
         </form>
@@ -394,34 +483,6 @@ export function BudgetDashboard() {
         onSuccess={() => {
           refetchCategories();
           refetchWeeks();
-        }}
-      />
-
-      {/* Modal de Gastos de Semana */}
-      {selectedWeekId && (
-        <WeekExpenses
-          week={weeks.find(w => w.id === selectedWeekId)!}
-          categories={categories}
-          opened={expensesModalOpened}
-          onClose={handleCloseExpensesModal}
-          onSuccess={() => {
-            refetchWeeks();
-            refetchCategories();
-          }}
-        />
-      )}
-
-      {/* Modal de Gestión del Presupuesto */}
-      <BudgetManagement
-        opened={budgetManagementOpened}
-        onClose={() => setBudgetManagementOpened(false)}
-        currentBudget={user.monthlyBudget || 0}
-        currentMonth={displayMonth}
-        currentYear={displayYear}
-        onSuccess={() => {
-          refetchUser();
-          refetchWeeks();
-          refetchCategories();
         }}
       />
     </Container>

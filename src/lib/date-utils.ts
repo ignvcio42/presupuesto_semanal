@@ -149,7 +149,7 @@ export function calculateRollover(allocated: number, spent: number): number {
  */
 export function getDefaultCategories() {
   return [
-    { name: 'Polola', minPercentage: 30, maxPercentage: 35, suggestedPercentage: 32.5 },
+    { name: 'Polola', minPercentage: 30, maxPercentage: 35, suggestedPercentage: 32 },
     { name: 'Comida personal', minPercentage: 30, maxPercentage: 35, suggestedPercentage: 32.5 },
     { name: 'Transporte/Bencina', minPercentage: 10, maxPercentage: 15, suggestedPercentage: 12.5 },
     { name: 'Gustos pequeños', minPercentage: 10, maxPercentage: 15, suggestedPercentage: 12.5 },

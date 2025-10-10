@@ -87,21 +87,19 @@ export function CategorySettings({ opened, onClose, categories, onSuccess }: Cat
 
   const handleRemoveCategory = (index: number) => {
     const category = form.values.categories[index];
-    if (!category) return;
-    
-    if (category.id.startsWith('temp-')) {
-      form.removeListItem('categories', index);
-    } else {
-      deleteCategory.mutate(category.id);
-      form.removeListItem('categories', index);
+    if (category) {
+      if (category.id.startsWith('temp-')) {
+        form.removeListItem('categories', index);
+      } else {
+        deleteCategory.mutate(category.id);
+        form.removeListItem('categories', index);
+      }
     }
   };
 
   const handleCreateNewCategory = async (index: number) => {
     const category = form.values.categories[index];
-    if (!category) return;
-    
-    if (category.name.trim() && category.allocation > 0) {
+    if (category && category.name.trim() && category.allocation > 0) {
       try {
         await createCategory.mutateAsync({
           name: category.name,
@@ -134,15 +132,17 @@ export function CategorySettings({ opened, onClose, categories, onSuccess }: Cat
             </Text>
           </Alert>
 
-          <Progress
-            value={Math.min(totalAllocation, 100)}
-            color={isValid ? 'green' : totalAllocation > 100 ? 'red' : 'yellow'}
-            size="lg"
-            radius="xl"
-          />
-          <Text size="sm" ta="center" c="dimmed">
-            {totalAllocation.toFixed(1)}%
-          </Text>
+          <div>
+            <Progress
+              value={Math.min(totalAllocation, 100)}
+              color={isValid ? 'green' : totalAllocation > 100 ? 'red' : 'yellow'}
+              size="lg"
+              radius="xl"
+            />
+            <Text size="sm" ta="center" mt="xs">
+              {totalAllocation.toFixed(1)}%
+            </Text>
+          </div>
 
           {form.values.categories.map((category, index) => (
             <Group key={category.id} align="flex-end">
