@@ -42,10 +42,11 @@ interface CategorySettingsProps {
   opened: boolean;
   onClose: () => void;
   categories: Array<{ id: string; name: string; allocation: number }>;
+  monthlyBudget?: number | null;
   onSuccess?: () => void;
 }
 
-export function CategorySettings({ opened, onClose, categories, onSuccess }: CategorySettingsProps) {
+export function CategorySettings({ opened, onClose, categories, monthlyBudget = 100000, onSuccess }: CategorySettingsProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [autoHelp, setAutoHelp] = useState(true);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
@@ -472,9 +473,9 @@ export function CategorySettings({ opened, onClose, categories, onSuccess }: Cat
                   
                   {/* Mostrar información adicional */}
                   <Group justify="space-between" align="center" mt="xs">
-                    {category.allocation > 0 && (
+                    {category.allocation > 0 && monthlyBudget && (
                       <Text size="xs" c="dimmed">
-                        ≈ {formatCurrency((category.allocation / 100) * 100000)} mensual
+                        ≈ {formatCurrency((category.allocation / 100) * monthlyBudget)} mensual
                       </Text>
                     )}
                     {category.isLocked && (

@@ -19,6 +19,7 @@ import {
   TextInput,
   Select,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { useForm } from '@mantine/form';
 import { DateInput } from '@mantine/dates';
 import { 
@@ -53,6 +54,7 @@ interface WeekExpensesDetailsProps {
   startDate: Date;
   endDate: Date;
   budgetMode?: 'simple' | 'categorized';
+  onExpenseUpdate?: () => void; // Callback para actualizar el dashboard
 }
 
 export function WeekExpensesDetails({ 
@@ -62,10 +64,14 @@ export function WeekExpensesDetails({
   weekNumber, 
   startDate, 
   endDate,
-  budgetMode = 'categorized'
+  budgetMode = 'categorized',
+  onExpenseUpdate
 }: WeekExpensesDetailsProps) {
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteModalOpened, setDeleteModalOpened] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+  const [editModalOpened, setEditModalOpened] = useState(false);
+  const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null);
 
   // Obtener gastos de la semana
   const { data: expenses = [], refetch: refetchExpenses, isLoading } = api.budget.getExpenses.useQuery(
@@ -80,13 +86,52 @@ export function WeekExpensesDetails({
   const updateExpense = api.budget.updateExpense.useMutation({
     onSuccess: () => {
       refetchExpenses();
-      setEditingExpense(null);
+      setEditModalOpened(false);
+      setExpenseToEdit(null);
+      onExpenseUpdate?.(); // Actualizar el dashboard principal
+      
+      // Mostrar notificación de éxito
+      notifications.show({
+        title: 'Gasto actualizado',
+        message: 'El gasto se ha actualizado correctamente',
+        color: 'green',
+        icon: <IconEdit size={16} />,
+      });
+    },
+    onError: (error) => {
+      console.error('Error al actualizar gasto:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudo actualizar el gasto. Inténtalo de nuevo.',
+        color: 'red',
+        icon: <IconAlertCircle size={16} />,
+      });
     },
   });
 
   const deleteExpense = api.budget.deleteExpense.useMutation({
     onSuccess: () => {
       refetchExpenses();
+      onExpenseUpdate?.(); // Actualizar el dashboard principal
+      setDeleteModalOpened(false);
+      setExpenseToDelete(null);
+      
+      // Mostrar notificación de éxito
+      notifications.show({
+        title: 'Gasto eliminado',
+        message: 'El gasto se ha eliminado correctamente',
+        color: 'green',
+        icon: <IconTrash size={16} />,
+      });
+    },
+    onError: (error) => {
+      console.error('Error al eliminar gasto:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudo eliminar el gasto. Inténtalo de nuevo.',
+        color: 'red',
+        icon: <IconAlertCircle size={16} />,
+      });
     },
   });
 
@@ -112,7 +157,8 @@ export function WeekExpensesDetails({
   });
 
   const handleEditExpense = (expense: Expense) => {
-    setEditingExpense(expense);
+    setExpenseToEdit(expense);
+    setEditModalOpened(true);
     editForm.setValues({
       amount: expense.amount,
       description: expense.description,
@@ -122,7 +168,7 @@ export function WeekExpensesDetails({
   };
 
   const handleUpdateExpense = async (values: CreateExpenseInput) => {
-    if (!editingExpense) return;
+    if (!expenseToEdit) return;
 
     setIsSubmitting(true);
     try {
@@ -133,9 +179,12 @@ export function WeekExpensesDetails({
       };
       
       await updateExpense.mutateAsync({
-        id: editingExpense.id,
+        id: expenseToEdit.id,
         data: updateData,
       });
+      
+      // Mostrar mensaje de éxito
+      // El refetch y actualización del dashboard se hace automáticamente en onSuccess
     } catch (error) {
       console.error('Error al actualizar gasto:', error);
     } finally {
@@ -143,11 +192,16 @@ export function WeekExpensesDetails({
     }
   };
 
-  const handleDeleteExpense = async (expenseId: string) => {
-    if (!confirm('¿Estás seguro de que quieres eliminar este gasto?')) return;
+  const handleDeleteExpense = (expense: Expense) => {
+    setExpenseToDelete(expense);
+    setDeleteModalOpened(true);
+  };
+
+  const confirmDeleteExpense = async () => {
+    if (!expenseToDelete) return;
 
     try {
-      await deleteExpense.mutateAsync(expenseId);
+      await deleteExpense.mutateAsync(expenseToDelete.id);
     } catch (error) {
       console.error('Error al eliminar gasto:', error);
     }
@@ -180,11 +234,16 @@ export function WeekExpensesDetails({
             <Text size="sm" c="dimmed">
               {formatDate(startDate)} - {formatDate(endDate)}
             </Text>
-            <Badge color="blue" variant="light">
-              {expenses.length} gasto{expenses.length !== 1 ? 's' : ''}
-            </Badge>
+            <Group>
+              {(updateExpense.isPending || deleteExpense.isPending) && (
+                <Loader size="xs" />
+              )}
+              <Badge color="blue" variant="light">
+                {expenses.length} gasto{expenses.length !== 1 ? 's' : ''}
+              </Badge>
+            </Group>
           </Group>
-          <Group justify="space-between" mt="xs">
+          <Group justify="space-start" mt="xs">
             <Text size="sm">Total gastado:</Text>
             <Text size="sm" fw={600} c="red">
               {formatCurrency(totalSpent)}
@@ -221,7 +280,14 @@ export function WeekExpensesDetails({
                     <Group gap="xs">
                       <IconCalendar size={14} color="gray" />
                       <Text size="xs" c="dimmed">
-                        {formatDate(expense.date)}
+                        {formatDate(expense.date, 'dd/MM/yyyy')} - ({expense.date.toLocaleDateString('es-ES', { 
+                          weekday: 'long', 
+                          day: 'numeric', 
+                          month: 'long', 
+                        })}{' '}{expense.date.toLocaleTimeString('es-ES', { 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })})
                       </Text>
                       {expense.category && (
                         <>
@@ -240,6 +306,7 @@ export function WeekExpensesDetails({
                       color="blue"
                       size="sm"
                       onClick={() => handleEditExpense(expense)}
+                      loading={updateExpense.isPending}
                     >
                       <IconEdit size={14} />
                     </ActionIcon>
@@ -247,7 +314,7 @@ export function WeekExpensesDetails({
                       variant="light"
                       color="red"
                       size="sm"
-                      onClick={() => handleDeleteExpense(expense.id)}
+                      onClick={() => handleDeleteExpense(expense)}
                       loading={deleteExpense.isPending}
                     >
                       <IconTrash size={14} />
@@ -259,79 +326,152 @@ export function WeekExpensesDetails({
           </Stack>
         )}
 
-        {/* Formulario de edición */}
-        {editingExpense && (
-          <>
-            <Divider label="Editar gasto" labelPosition="center" />
-            <Card withBorder p="md">
-              <form onSubmit={editForm.onSubmit(handleUpdateExpense)}>
-                <Stack gap="md">
-                  <Group justify="space-between" align="center">
-                    <Text fw={600}>Editando gasto</Text>
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      onClick={() => setEditingExpense(null)}
-                    >
-                      <IconX size={16} />
-                    </ActionIcon>
-                  </Group>
-
-                  <NumberInput
-                    label="Monto"
-                    placeholder="Ingresa el monto"
-                    leftSection="$"
-                    min={1}
-                    step={100}
-                    thousandSeparator="."
-                    decimalSeparator=","
-                    {...editForm.getInputProps('amount')}
-                  />
-
-                  <TextInput
-                    label="Descripción"
-                    placeholder="¿En qué gastaste?"
-                    {...editForm.getInputProps('description')}
-                  />
-
-                  <DateInput
-                    label="Fecha"
-                    placeholder="Selecciona la fecha"
-                    valueFormat="DD/MM/YYYY"
-                    {...editForm.getInputProps('date')}
-                  />
-
-                  {budgetMode === 'categorized' && (
-                    <Select
-                      label="Categoría"
-                      placeholder="Selecciona una categoría"
-                      data={categoryOptions}
-                      {...editForm.getInputProps('categoryId')}
-                    />
-                  )}
-
-                  <Group justify="flex-end" mt="md">
-                    <Button
-                      variant="outline"
-                      onClick={() => setEditingExpense(null)}
-                      disabled={isSubmitting}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
-                      type="submit"
-                      loading={isSubmitting}
-                      disabled={!editForm.isValid()}
-                    >
-                      Actualizar Gasto
-                    </Button>
-                  </Group>
-                </Stack>
-              </form>
-            </Card>
-          </>
-        )}
       </Stack>
+
+      {/* Modal de edición de gasto */}
+      <Modal
+        opened={editModalOpened}
+        onClose={() => {
+          setEditModalOpened(false);
+          setExpenseToEdit(null);
+          editForm.reset();
+        }}
+        title="Editar gasto"
+        size="md"
+      >
+        <form onSubmit={editForm.onSubmit(handleUpdateExpense)}>
+          <Stack gap="md">
+            {expenseToEdit && (
+              <Card withBorder p="sm" bg="gray.0">
+                <Group justify="space-between">
+                  <Text size="sm" fw={500}>
+                    Editando: {formatCurrency(expenseToEdit.amount)}
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    {expenseToEdit.description}
+                  </Text>
+                </Group>
+                {expenseToEdit.category && (
+                  <Badge size="xs" variant="light" color="blue" mt="xs">
+                    {expenseToEdit.category.name}
+                  </Badge>
+                )}
+              </Card>
+            )}
+
+            <NumberInput
+              label="Monto"
+              placeholder="Ingresa el monto"
+              leftSection="$"
+              min={1}
+              step={100}
+              thousandSeparator="."
+              decimalSeparator=","
+              {...editForm.getInputProps('amount')}
+            />
+
+            <TextInput
+              label="Descripción"
+              placeholder="¿En qué gastaste?"
+              {...editForm.getInputProps('description')}
+            />
+
+            <DateInput
+              label="Fecha"
+              placeholder="Selecciona la fecha"
+              valueFormat="DD/MM/YYYY"
+              {...editForm.getInputProps('date')}
+            />
+
+            {budgetMode === 'categorized' && (
+              <Select
+                label="Categoría"
+                placeholder="Selecciona una categoría"
+                data={categoryOptions}
+                {...editForm.getInputProps('categoryId')}
+              />
+            )}
+
+            <Group justify="flex-end" mt="md">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditModalOpened(false);
+                  setExpenseToEdit(null);
+                  editForm.reset();
+                }}
+                disabled={isSubmitting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                loading={isSubmitting}
+                disabled={!editForm.isValid()}
+              >
+                Actualizar Gasto
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+
+      {/* Modal de confirmación para eliminar gasto */}
+      <Modal
+        opened={deleteModalOpened}
+        onClose={() => {
+          setDeleteModalOpened(false);
+          setExpenseToDelete(null);
+        }}
+        title="Confirmar eliminación"
+        size="sm"
+      >
+        <Stack gap="md">
+          <Alert icon={<IconAlertCircle size={16} />} color="red" variant="light">
+            <Text size="sm">
+              ¿Estás seguro de que quieres eliminar este gasto?
+            </Text>
+          </Alert>
+
+          {expenseToDelete && (
+            <Card withBorder p="sm">
+              <Group justify="space-between">
+                <Text size="sm" fw={500}>
+                  {formatCurrency(expenseToDelete.amount)}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {expenseToDelete.description}
+                </Text>
+              </Group>
+              {expenseToDelete.category && (
+                <Badge size="xs" variant="light" color="blue" mt="xs">
+                  {expenseToDelete.category.name}
+                </Badge>
+              )}
+            </Card>
+          )}
+
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteModalOpened(false);
+                setExpenseToDelete(null);
+              }}
+              disabled={deleteExpense.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              color="red"
+              onClick={confirmDeleteExpense}
+              loading={deleteExpense.isPending}
+            >
+              Eliminar
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Modal>
   );
 }

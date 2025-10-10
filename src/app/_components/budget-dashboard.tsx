@@ -274,6 +274,10 @@ export function BudgetDashboard() {
                       onCloseWeek={handleCloseWeek}
                       isCurrentWeek={true}
                       budgetMode={user?.budgetMode as 'simple' | 'categorized'}
+                      onExpenseUpdate={() => {
+                        refetchWeeks();
+                        refetchCategories();
+                      }}
                     />
                     
                     {user.budgetMode === 'categorized' && (
@@ -375,6 +379,10 @@ export function BudgetDashboard() {
                     onCloseWeek={handleCloseWeek}
                     isCurrentWeek={week.weekNumber === currentWeekNumber}
                     budgetMode={user?.budgetMode as 'simple' | 'categorized'}
+                    onExpenseUpdate={() => {
+                      refetchWeeks();
+                      refetchCategories();
+                    }}
                   />
                 </Grid.Col>
               ))}
@@ -482,6 +490,7 @@ export function BudgetDashboard() {
         opened={categorySettingsOpened}
         onClose={() => setCategorySettingsOpened(false)}
         categories={categories}
+        monthlyBudget={user?.monthlyBudget}
         onSuccess={() => {
           refetchCategories();
           refetchWeeks();
