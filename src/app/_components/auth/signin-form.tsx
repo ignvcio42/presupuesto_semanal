@@ -72,13 +72,13 @@ export function SignInForm({ onSwitchToRegister }: SignInFormProps) {
           color: 'green',
         });
         
-        console.log('Redirigiendo en 1 segundo...');
-        // Pequeño delay para asegurar que la sesión se establezca
+        console.log('Esperando a que se establezca la sesión...');
+        // Esperar a que la sesión se establezca antes de redirigir
         setTimeout(() => {
-          console.log('Ejecutando redirección...');
-          // Forzar recarga completa de la página
-          window.location.href = '/';
-        }, 1000);
+          console.log('Redirigiendo...');
+          // Usar router.push en lugar de window.location para mejor manejo
+          router.push('/');
+        }, 2000);
       }
     } catch {
       setError('Error al iniciar sesión');
