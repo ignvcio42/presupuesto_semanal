@@ -17,7 +17,7 @@ import { useForm } from '@mantine/form';
 import { DateInput } from '@mantine/dates';
 import { IconPlus, IconAlertCircle } from '@tabler/icons-react';
 import { api } from '~/trpc/react';
-import { formatCurrency } from '~/lib/date-utils';
+import { formatCurrency, createLocalDate, createDateFromString } from '~/lib/date-utils';
 import type { CreateExpenseInput } from '~/lib/validations';
 
 interface ExpenseFormProps {
@@ -34,7 +34,7 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess 
     initialValues: {
       amount: 1,
       description: '',
-      date: new Date(),
+      date: createLocalDate(),
       categoryId: '',
     },
     validate: {
@@ -93,10 +93,20 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess 
       return;
     }
 
-    // Convertir la fecha a objeto Date si es string
+    // Convertir la fecha a objeto Date si es string y asegurar zona horaria local
+    let finalDate: Date;
+    if (values.date instanceof Date) {
+      finalDate = values.date;
+    } else if (typeof values.date === 'string') {
+      // Si es un string, crear fecha desde el string
+      finalDate = createDateFromString(values.date);
+    } else {
+      finalDate = createLocalDate();
+    }
+
     const expenseData = {
       ...values,
-      date: values.date instanceof Date ? values.date : new Date(values.date),
+      date: finalDate,
       // No enviar categoryId si está en modo simple
       categoryId: budgetMode === 'simple' ? undefined : values.categoryId,
     };

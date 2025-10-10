@@ -28,6 +28,7 @@ import {
   IconHistory
 } from '@tabler/icons-react';
 import { useForm } from '@mantine/form';
+import { notifications } from '@mantine/notifications';
 import { api } from '~/trpc/react';
 import { WeekCard } from './week-card';
 import { ExpenseForm } from './expense-form';
@@ -46,6 +47,7 @@ export function BudgetDashboard() {
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
   const [showMonthSelector, setShowMonthSelector] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const currentDate = new Date();
   const currentYear = currentDate.getFullYear();
@@ -62,6 +64,7 @@ export function BudgetDashboard() {
     year: displayYear,
     month: displayMonth,
   });
+
 
   // Mutations
   const updateUser = api.budget.updateUser.useMutation({
@@ -94,6 +97,37 @@ export function BudgetDashboard() {
       setSettingsOpened(false);
     },
   });
+
+  // Función para recargar todos los datos
+  const handleRefreshData = async () => {
+    setIsRefreshing(true);
+    try {
+      // Recargar todos los datos sin perder la configuración
+      await Promise.all([
+        refetchUser(),
+        refetchWeeks(),
+        refetchCategories(),
+      ]);
+      
+      // Mostrar notificación de éxito
+      notifications.show({
+        title: 'Datos actualizados',
+        message: 'Todos los datos se han recargado correctamente',
+        color: 'green',
+        icon: <IconSettings size={16} />,
+      });
+    } catch (error) {
+      console.error('Error al recargar datos:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudieron recargar los datos. Inténtalo de nuevo.',
+        color: 'red',
+        icon: <IconAlertCircle size={16} />,
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const settingsForm = useForm({
     initialValues: {
@@ -462,14 +496,25 @@ export function BudgetDashboard() {
             <Divider />
 
             <Group justify="space-between" mt="md">
-              <Button
-                variant="outline"
-                color="red"
-                onClick={handleResetBudget}
-                loading={resetBudget.isPending}
-              >
-                Reiniciar Todo
-              </Button>
+              <Group>
+                <Button
+                  variant="outline"
+                  color="blue"
+                  onClick={handleRefreshData}
+                  loading={isRefreshing}
+                  leftSection={<IconSettings size={16} />}
+                >
+                  Recargar Datos
+                </Button>
+                <Button
+                  variant="outline"
+                  color="red"
+                  onClick={handleResetBudget}
+                  loading={resetBudget.isPending}
+                >
+                  Reiniciar Todo
+                </Button>
+              </Group>
               
               <Group>
                 <Button

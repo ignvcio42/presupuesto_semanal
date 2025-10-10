@@ -153,6 +153,49 @@ export function calculateRollover(allocated: number, spent: number): number {
 }
 
 /**
+ * Crea una fecha en la zona horaria local sin problemas de UTC
+ */
+export function createLocalDate(year?: number, month?: number, day?: number): Date {
+  if (year !== undefined && month !== undefined && day !== undefined) {
+    // Crear fecha en zona horaria local
+    return new Date(year, month - 1, day); // month es 0-indexed en Date constructor
+  }
+  // Para la fecha actual, crear en zona horaria local
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+/**
+ * Convierte una fecha a zona horaria local
+ */
+export function toLocalDate(date: Date | string): Date {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  // Crear nueva fecha usando los componentes locales para evitar problemas de UTC
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/**
+ * Crea una fecha desde un string en formato YYYY-MM-DD (como viene de DateInput)
+ */
+export function createDateFromString(dateString: string): Date {
+  const parts = dateString.split('-').map(Number);
+  const year = parts[0] ?? new Date().getFullYear();
+  const month = parts[1] ?? 1;
+  const day = parts[2] ?? 1;
+  return new Date(year, month - 1, day); // month es 0-indexed
+}
+
+/**
+ * Formatea una fecha para mostrar sin problemas de zona horaria
+ */
+export function formatDateSafe(date: Date | string, formatStr = 'dd/MM/yyyy'): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  // Usar los componentes locales para evitar problemas de UTC
+  const localDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return format(localDate, formatStr, { locale: es });
+}
+
+/**
  * Obtiene las categorías predeterminadas con sus porcentajes sugeridos
  */
 export function getDefaultCategories() {

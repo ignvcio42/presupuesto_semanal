@@ -32,7 +32,7 @@ import {
   IconCurrencyDollar
 } from '@tabler/icons-react';
 import { api } from '~/trpc/react';
-import { formatCurrency, formatDate } from '~/lib/date-utils';
+import { formatCurrency, formatDate, toLocalDate, createDateFromString, formatDateSafe } from '~/lib/date-utils';
 import type { CreateExpenseInput } from '~/lib/validations';
 
 interface Expense {
@@ -159,10 +159,14 @@ export function WeekExpensesDetails({
   const handleEditExpense = (expense: Expense) => {
     setExpenseToEdit(expense);
     setEditModalOpened(true);
+    
+    // Asegurar que la fecha sea un objeto Date en zona horaria local
+    const expenseDate = expense.date instanceof Date ? toLocalDate(expense.date) : toLocalDate(new Date(expense.date));
+    
     editForm.setValues({
       amount: expense.amount,
       description: expense.description,
-      date: expense.date,
+      date: expenseDate,
       categoryId: expense.category?.id || '',
     });
   };
@@ -172,8 +176,20 @@ export function WeekExpensesDetails({
 
     setIsSubmitting(true);
     try {
+      // Asegurar que la fecha sea un objeto Date en zona horaria local
+      let finalDate: Date;
+      if (values.date instanceof Date) {
+        finalDate = toLocalDate(values.date);
+      } else if (typeof values.date === 'string') {
+        // Si es un string, crear fecha desde el string
+        finalDate = createDateFromString(values.date);
+      } else {
+        finalDate = toLocalDate(new Date(values.date));
+      }
+
       const updateData = {
         ...values,
+        date: finalDate,
         // No enviar categoryId si está en modo simple
         categoryId: budgetMode === 'simple' ? undefined : values.categoryId,
       };
@@ -280,14 +296,7 @@ export function WeekExpensesDetails({
                     <Group gap="xs">
                       <IconCalendar size={14} color="gray" />
                       <Text size="xs" c="dimmed">
-                        {formatDate(expense.date, 'dd/MM/yyyy')} - ({expense.date.toLocaleDateString('es-ES', { 
-                          weekday: 'long', 
-                          day: 'numeric', 
-                          month: 'long', 
-                        })}{' '}{expense.date.toLocaleTimeString('es-ES', { 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
-                        })})
+                        {formatDateSafe(expense.date, 'dd/MM/yyyy')} - ({formatDateSafe(expense.date, 'EEEE, d \'de\' MMMM')})
                       </Text>
                       {expense.category && (
                         <>
