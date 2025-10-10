@@ -15,7 +15,7 @@ export default function Home() {
 
   console.log('Home - Session:', session);
   console.log('Home - Status:', status);
-  console.log('Home - Current path:', window.location.pathname);
+  console.log('Home - Current path:', typeof window !== 'undefined' ? window.location.pathname : 'server');
 
   useEffect(() => {
     console.log('Home useEffect - Status:', status, 'Session:', session);
