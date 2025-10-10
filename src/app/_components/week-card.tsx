@@ -44,7 +44,17 @@ export function WeekCard({ week, onCloseWeek, onViewDetails, isCurrentWeek }: We
   };
 
   return (
-    <Card shadow="sm" padding="lg" radius="md" withBorder>
+    <Card 
+      shadow="sm" 
+      padding="lg" 
+      radius="md" 
+      withBorder
+      style={{
+        opacity: week.isClosed ? 0.7 : 1,
+        borderColor: week.isClosed ? '#868e96' : undefined,
+        backgroundColor: week.isClosed ? '#f8f9fa' : undefined,
+      }}
+    >
       <Group justify="space-between" mb="xs">
         <Group>
           <IconCalendar size={16} />
@@ -52,6 +62,11 @@ export function WeekCard({ week, onCloseWeek, onViewDetails, isCurrentWeek }: We
           {isCurrentWeek && (
             <Badge color="blue" variant="light" size="sm">
               Actual
+            </Badge>
+          )}
+          {week.isClosed && (
+            <Badge color="gray" variant="filled" size="sm">
+              Cerrada
             </Badge>
           )}
         </Group>
@@ -88,32 +103,23 @@ export function WeekCard({ week, onCloseWeek, onViewDetails, isCurrentWeek }: We
           </Text>
         </Group>
 
-        {week.isClosed && week.rolloverAmount !== 0 && (
+        {week.isClosed && (
           <Group justify="space-between">
-            <Text size="sm">Rollover aplicado:</Text>
+            <Text size="sm">Rollover transferido:</Text>
             <Group gap="xs">
-              {week.rolloverAmount > 0 ? (
+              {week.weeklyBudget - week.spentAmount > 0 ? (
                 <IconTrendingUp size={16} color="green" />
-              ) : (
+              ) : week.weeklyBudget - week.spentAmount < 0 ? (
                 <IconTrendingDown size={16} color="red" />
-              )}
+              ) : null}
               <Text 
                 size="sm" 
                 fw={500} 
-                c={week.rolloverAmount > 0 ? 'green' : 'red'}
+                c={week.weeklyBudget - week.spentAmount > 0 ? 'green' : week.weeklyBudget - week.spentAmount < 0 ? 'red' : 'gray'}
               >
-                {week.rolloverAmount > 0 ? '+' : ''}{formatCurrency(week.rolloverAmount)}
+                {week.weeklyBudget - week.spentAmount > 0 ? '+' : ''}{formatCurrency(week.weeklyBudget - week.spentAmount)}
               </Text>
             </Group>
-          </Group>
-        )}
-
-        {week.isClosed && week.rolloverAmount === 0 && (
-          <Group justify="space-between">
-            <Text size="sm">Rollover aplicado:</Text>
-            <Text size="sm" fw={500} c="gray">
-              $0 (sin cambios)
-            </Text>
           </Group>
         )}
         
@@ -218,8 +224,8 @@ export function WeekCard({ week, onCloseWeek, onViewDetails, isCurrentWeek }: We
         )}
         
         {week.isClosed && (
-          <Badge color="gray" variant="light">
-            Cerrada
+          <Badge color="gray" variant="filled" size="sm">
+            Semana cerrada
           </Badge>
         )}
       </Group>

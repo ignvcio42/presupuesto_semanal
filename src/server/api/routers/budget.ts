@@ -267,13 +267,29 @@ export const budgetRouter = createTRPCRouter({
 
         // Crear las semanas
         for (const week of monthInfo.weeks) {
+          // Buscar si hay rollover de la semana anterior para aplicar
+          let rolloverToApply = 0;
+          if (week.weekNumber > 1) {
+            const previousWeek = await ctx.db.week.findFirst({
+              where: {
+                userId: user.id,
+                weekNumber: week.weekNumber - 1,
+                monthlyHistoryId: monthlyHistory.id,
+              },
+            });
+            
+            if (previousWeek && previousWeek.isClosed) {
+              rolloverToApply = previousWeek.rolloverAmount;
+            }
+          }
+
           const dbWeek = await ctx.db.week.create({
             data: {
               userId: user.id,
               weekNumber: week.weekNumber,
               startDate: week.startDate,
               endDate: week.endDate,
-              weeklyBudget: week.weeklyBudget,
+              weeklyBudget: week.weeklyBudget + rolloverToApply,
               rolloverAmount: 0, // La primera semana no tiene rollover
               monthlyHistoryId: monthlyHistory.id,
             },
@@ -290,7 +306,7 @@ export const budgetRouter = createTRPCRouter({
                 data: {
                   categoryId: category.id,
                   weekId: dbWeek.id,
-                  allocatedAmount: (week.weeklyBudget * category.allocation) / 100,
+                  allocatedAmount: ((week.weeklyBudget + rolloverToApply) * category.allocation) / 100,
                 },
               })
             )
@@ -438,13 +454,29 @@ export const budgetRouter = createTRPCRouter({
           });
         }
 
+        // Buscar si hay rollover de la semana anterior para aplicar
+        let rolloverToApply = 0;
+        if (week.weekNumber > 1) {
+          const previousWeek = await ctx.db.week.findFirst({
+            where: {
+              userId: user.id,
+              weekNumber: week.weekNumber - 1,
+              monthlyHistoryId: monthlyHistory.id,
+            },
+          });
+          
+          if (previousWeek && previousWeek.isClosed) {
+            rolloverToApply = previousWeek.rolloverAmount;
+          }
+        }
+
         dbWeek = await ctx.db.week.create({
           data: {
             userId: user.id,
             weekNumber: week.weekNumber,
             startDate: week.startDate,
             endDate: week.endDate,
-            weeklyBudget: week.weeklyBudget,
+            weeklyBudget: week.weeklyBudget + rolloverToApply,
             monthlyHistoryId: monthlyHistory.id,
           },
         });
@@ -461,7 +493,7 @@ export const budgetRouter = createTRPCRouter({
                 data: {
                   categoryId: category.id,
                   weekId: dbWeek!.id,
-                  allocatedAmount: (week.weeklyBudget * category.allocation) / 100,
+                  allocatedAmount: ((week.weeklyBudget + rolloverToApply) * category.allocation) / 100,
                 },
               })
             )
@@ -845,6 +877,82 @@ export const budgetRouter = createTRPCRouter({
       const monthInfo = getWeeksOfMonth(input.year, input.month, user.monthlyBudget || 0);
       const currentDate = new Date();
       
+      // Aplicar rollovers pendientes antes de consultar
+      const closedWeeksWithRollover = await ctx.db.week.findMany({
+        where: {
+          userId: user.id,
+          isClosed: true,
+          rolloverAmount: {
+            not: 0,
+          },
+          startDate: {
+            gte: monthInfo.weeks[0]?.startDate,
+            lte: monthInfo.weeks[monthInfo.weeks.length - 1]?.endDate,
+          },
+        },
+        orderBy: { weekNumber: 'asc' },
+      });
+
+      // Aplicar rollovers pendientes
+      for (const closedWeek of closedWeeksWithRollover) {
+        const nextWeek = await ctx.db.week.findFirst({
+          where: {
+            userId: user.id,
+            weekNumber: closedWeek.weekNumber + 1,
+            monthlyHistoryId: closedWeek.monthlyHistoryId,
+          },
+        });
+
+        if (nextWeek) {
+          // Verificar si el rollover ya se aplicó
+          const expectedBudget = (user.monthlyBudget || 0) / 4.33; // Presupuesto semanal base
+          const rolloverApplied = Math.abs(nextWeek.weeklyBudget - (expectedBudget + closedWeek.rolloverAmount)) < 1;
+
+          if (!rolloverApplied) {
+            // Aplicar el rollover
+            await ctx.db.week.update({
+              where: { id: nextWeek.id },
+              data: {
+                weeklyBudget: {
+                  increment: closedWeek.rolloverAmount,
+                },
+              },
+            });
+
+            // Actualizar asignaciones por categoría si es modo categorizado
+            if (user.budgetMode === 'categorized') {
+              const categories = await ctx.db.category.findMany({
+                where: { userId: user.id },
+              });
+
+              await Promise.all(
+                categories.map(category =>
+                  ctx.db.weekCategory.updateMany({
+                    where: {
+                      weekId: nextWeek.id,
+                      categoryId: category.id,
+                    },
+                    data: {
+                      allocatedAmount: {
+                        increment: (closedWeek.rolloverAmount * category.allocation) / 100,
+                      },
+                    },
+                  })
+                )
+              );
+            }
+
+            // Resetear el rollover de la semana cerrada ya que se aplicó
+            await ctx.db.week.update({
+              where: { id: closedWeek.id },
+              data: {
+                rolloverAmount: 0,
+              },
+            });
+          }
+        }
+      }
+
       // Auto-cerrar semanas vencidas antes de consultar
       const openWeeks = await ctx.db.week.findMany({
         where: {
@@ -915,6 +1023,14 @@ export const budgetRouter = createTRPCRouter({
               )
             );
           }
+
+          // Resetear el rollover de la semana actual ya que se aplicó
+          await ctx.db.week.update({
+            where: { id: week.id },
+            data: {
+              rolloverAmount: 0,
+            },
+          });
         }
 
         // Actualizar el historial mensual
@@ -1035,6 +1151,14 @@ export const budgetRouter = createTRPCRouter({
             )
           );
         }
+
+        // Resetear el rollover de la semana actual ya que se aplicó
+        await ctx.db.week.update({
+          where: { id: input.weekId },
+          data: {
+            rolloverAmount: 0,
+          },
+        });
       }
 
       // Actualizar el historial mensual
@@ -1196,13 +1320,29 @@ export const budgetRouter = createTRPCRouter({
 
        // Crear las semanas
        for (const week of monthInfo.weeks) {
+         // Buscar si hay rollover de la semana anterior para aplicar
+         let rolloverToApply = 0;
+         if (week.weekNumber > 1) {
+           const previousWeek = await ctx.db.week.findFirst({
+             where: {
+               userId: user.id,
+               weekNumber: week.weekNumber - 1,
+               monthlyHistoryId: monthlyHistory.id,
+             },
+           });
+           
+           if (previousWeek && previousWeek.isClosed) {
+             rolloverToApply = previousWeek.rolloverAmount;
+           }
+         }
+
          const dbWeek = await ctx.db.week.create({
            data: {
              userId: user.id,
              weekNumber: week.weekNumber,
              startDate: week.startDate,
              endDate: week.endDate,
-             weeklyBudget: week.weeklyBudget,
+             weeklyBudget: week.weeklyBudget + rolloverToApply,
              rolloverAmount: 0, // Las semanas nuevas no tienen rollover
              monthlyHistoryId: monthlyHistory.id,
            },
@@ -1220,7 +1360,7 @@ export const budgetRouter = createTRPCRouter({
                  data: {
                    categoryId: category.id,
                    weekId: dbWeek.id,
-                   allocatedAmount: (week.weeklyBudget * category.allocation) / 100,
+                   allocatedAmount: ((week.weeklyBudget + rolloverToApply) * category.allocation) / 100,
                  },
                })
              )
@@ -1316,6 +1456,14 @@ export const budgetRouter = createTRPCRouter({
                )
              );
            }
+
+           // Resetear el rollover de la semana actual ya que se aplicó
+           await ctx.db.week.update({
+             where: { id: week.id },
+             data: {
+               rolloverAmount: 0,
+             },
+           });
 
            appliedRollovers++;
          }
@@ -1418,6 +1566,14 @@ export const budgetRouter = createTRPCRouter({
                );
              }
 
+             // Resetear el rollover de la semana cerrada ya que se aplicó
+             await ctx.db.week.update({
+               where: { id: closedWeek.id },
+               data: {
+                 rolloverAmount: 0,
+               },
+             });
+
              appliedRollovers++;
            }
          }
@@ -1496,13 +1652,29 @@ export const budgetRouter = createTRPCRouter({
 
        // Crear las semanas
        for (const week of monthInfo.weeks) {
+         // Buscar si hay rollover de la semana anterior para aplicar
+         let rolloverToApply = 0;
+         if (week.weekNumber > 1) {
+           const previousWeek = await ctx.db.week.findFirst({
+             where: {
+               userId: user.id,
+               weekNumber: week.weekNumber - 1,
+               monthlyHistoryId: monthlyHistory.id,
+             },
+           });
+           
+           if (previousWeek && previousWeek.isClosed) {
+             rolloverToApply = previousWeek.rolloverAmount;
+           }
+         }
+
          const dbWeek = await ctx.db.week.create({
            data: {
              userId: user.id,
              weekNumber: week.weekNumber,
              startDate: week.startDate,
              endDate: week.endDate,
-             weeklyBudget: week.weeklyBudget,
+             weeklyBudget: week.weeklyBudget + rolloverToApply,
              rolloverAmount: 0, // Las semanas reiniciadas no tienen rollover
              monthlyHistoryId: monthlyHistory.id,
            },
@@ -1520,7 +1692,7 @@ export const budgetRouter = createTRPCRouter({
                  data: {
                    categoryId: category.id,
                    weekId: dbWeek.id,
-                   allocatedAmount: (week.weeklyBudget * category.allocation) / 100,
+                   allocatedAmount: ((week.weeklyBudget + rolloverToApply) * category.allocation) / 100,
                  },
                })
              )
