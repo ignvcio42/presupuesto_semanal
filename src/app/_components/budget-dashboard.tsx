@@ -98,6 +98,24 @@ export function BudgetDashboard() {
     },
   });
 
+  const recoverMissingWeeks = api.budget.recoverMissingWeeks.useMutation({
+    onSuccess: () => {
+      void refetchWeeks();
+      notifications.show({
+        title: 'Semanas recuperadas',
+        message: 'Las semanas faltantes han sido recuperadas exitosamente',
+        color: 'green',
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        title: 'Error',
+        message: error.message,
+        color: 'red',
+      });
+    },
+  });
+
   // Función para recargar todos los datos
   const handleRefreshData = async () => {
     setIsRefreshing(true);
@@ -444,6 +462,17 @@ export function BudgetDashboard() {
                   onClick={() => createWeeks.mutate()}
                 >
                   Crear Semanas
+                </Button>
+                <Button 
+                  variant="light"
+                  color="blue"
+                  loading={recoverMissingWeeks.isPending}
+                  onClick={() => recoverMissingWeeks.mutate({
+                    year: displayYear,
+                    month: displayMonth,
+                  })}
+                >
+                  Recuperar Semanas Faltantes
                 </Button>
               </Group>
             </Alert>

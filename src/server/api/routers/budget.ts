@@ -20,6 +20,124 @@ import {
   getDefaultCategories,
 } from '~/lib/date-utils';
 
+// Función para asegurar que la semana 1 existe
+async function ensureWeek1Exists(ctx: any, userId: string, year: number, month: number, monthlyBudget: number) {
+  // Buscar el historial mensual
+  const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
+    where: {
+      userId_year_month: {
+        userId: userId,
+        year: year,
+        month: month,
+      },
+    },
+  });
+
+  if (!monthlyHistory) {
+    // Si no existe historial mensual, crear todo el mes
+    const monthInfo = getWeeksOfMonth(year, month, monthlyBudget);
+    
+    const newMonthlyHistory = await ctx.db.monthlyHistory.create({
+      data: {
+        userId: userId,
+        year,
+        month,
+        totalBudget: monthlyBudget,
+        totalSpent: 0,
+        totalRollover: 0,
+      },
+    });
+
+    // Crear todas las semanas
+    for (const week of monthInfo.weeks) {
+      await ctx.db.week.create({
+        data: {
+          userId: userId,
+          weekNumber: week.weekNumber,
+          startDate: week.startDate,
+          endDate: week.endDate,
+          weeklyBudget: week.weeklyBudget,
+          rolloverAmount: 0,
+          monthlyHistoryId: newMonthlyHistory.id,
+        },
+      });
+    }
+    
+    return;
+  }
+
+  // Verificar si existe la semana 1
+  const week1 = await ctx.db.week.findFirst({
+    where: {
+      userId: userId,
+      weekNumber: 1,
+      monthlyHistoryId: monthlyHistory.id,
+    },
+  });
+
+  if (!week1) {
+    // Si no existe la semana 1, crearla
+    const monthInfo = getWeeksOfMonth(year, month, monthlyBudget);
+    const week1Info = monthInfo.weeks.find(w => w.weekNumber === 1);
+    
+    if (week1Info) {
+      await ctx.db.week.create({
+        data: {
+          userId: userId,
+          weekNumber: 1,
+          startDate: week1Info.startDate,
+          endDate: week1Info.endDate,
+          weeklyBudget: week1Info.weeklyBudget,
+          rolloverAmount: 0,
+          monthlyHistoryId: monthlyHistory.id,
+        },
+      });
+    }
+  }
+}
+
+// Función para recuperar semanas faltantes
+async function recoverMissingWeeks(ctx: any, userId: string, year: number, month: number, monthlyBudget: number) {
+  const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
+    where: {
+      userId_year_month: {
+        userId: userId,
+        year: year,
+        month: month,
+      },
+    },
+  });
+
+  if (!monthlyHistory) return;
+
+  const monthInfo = getWeeksOfMonth(year, month, monthlyBudget);
+  const existingWeeks = await ctx.db.week.findMany({
+    where: {
+      userId: userId,
+      monthlyHistoryId: monthlyHistory.id,
+    },
+  });
+
+  // Crear semanas faltantes
+  for (const weekInfo of monthInfo.weeks) {
+    const existingWeek = existingWeeks.find((w: any) => w.weekNumber === weekInfo.weekNumber);
+    
+    if (!existingWeek) {
+      await ctx.db.week.create({
+        data: {
+          userId: userId,
+          weekNumber: weekInfo.weekNumber,
+          startDate: weekInfo.startDate,
+          endDate: weekInfo.endDate,
+          weeklyBudget: weekInfo.weeklyBudget,
+          rolloverAmount: 0,
+          monthlyHistoryId: monthlyHistory.id,
+        },
+      });
+    }
+  }
+}
+
 export const budgetRouter = createTRPCRouter({
   // Usuario
   createUser: publicProcedure
@@ -1022,6 +1140,9 @@ export const budgetRouter = createTRPCRouter({
       });
       if (!user) return [];
 
+      // Verificar y recuperar semana 1 si falta
+      await ensureWeek1Exists(ctx, userId, input.year, input.month, user.monthlyBudget || 0);
+
       const monthInfo = getWeeksOfMonth(input.year, input.month, user.monthlyBudget || 0);
       const currentDate = new Date();
       
@@ -1332,6 +1453,13 @@ export const budgetRouter = createTRPCRouter({
     .input(getMonthDataSchema)
     .query(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
+      const user = await ctx.db.user.findUnique({
+        where: { id: userId }
+      });
+      if (!user) return null;
+
+      // Verificar y recuperar semana 1 si falta
+      await ensureWeek1Exists(ctx, userId, input.year, input.month, user.monthlyBudget || 0);
 
       const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
         where: {
@@ -1915,6 +2043,24 @@ export const budgetRouter = createTRPCRouter({
          weeksCreated: monthInfo.weeks.length 
        };
      }),
+
+  // Recuperar semanas faltantes
+  recoverMissingWeeks: protectedProcedure
+    .input(getMonthDataSchema)
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+      const user = await ctx.db.user.findUnique({
+        where: { id: userId }
+      });
+      if (!user) throw new Error('Usuario no encontrado');
+
+      await recoverMissingWeeks(ctx, userId, input.year, input.month, user.monthlyBudget || 0);
+      
+      return { 
+        success: true, 
+        message: 'Semanas faltantes recuperadas exitosamente' 
+      };
+    }),
 
   // Consultas de administrador
   getAdminStats: publicProcedure
