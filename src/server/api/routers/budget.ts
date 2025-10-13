@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createTRPCRouter, publicProcedure, protectedProcedure } from '~/server/api/trpc';
+import type { createTRPCContext } from '~/server/api/trpc';
 import { 
   createUserSchema, 
   updateUserSchema, 
@@ -13,12 +14,17 @@ import {
 } from '~/lib/validations';
 import { 
   getWeeksOfMonth, 
-  getCurrentWeek, 
   calculateBudgetPercentage, 
   getTrafficLightColor,
   calculateRollover,
   getDefaultCategories,
 } from '~/lib/date-utils';
+
+// ============================================
+// TIPOS
+// ============================================
+
+type Context = Awaited<ReturnType<typeof createTRPCContext>>;
 
 // ============================================
 // FUNCIONES HELPER CENTRALIZADAS
@@ -29,7 +35,7 @@ import {
  * y aplica el rollover a ella. Esta es la función clave para la lógica correcta de rollover.
  */
 async function applyRolloverToNextOpenWeek(
-  ctx: any,
+  ctx: Context,
   weekId: string,
   rolloverAmount: number,
   userId: string,
@@ -95,7 +101,7 @@ async function applyRolloverToNextOpenWeek(
  * si el rollover cambió (por modificación o eliminación de gastos)
  */
 async function recalculateAndApplyRollover(
-  ctx: any,
+  ctx: Context,
   weekId: string,
   userId: string,
   budgetMode: string
@@ -139,12 +145,12 @@ async function recalculateAndApplyRollover(
  * Crea una semana con asignaciones de categorías
  */
 async function createWeekWithCategories(
-  ctx: any,
+  ctx: Context,
   userId: string,
-  weekInfo: any,
+  weekInfo: { weekNumber: number; startDate: Date; endDate: Date; weeklyBudget: number },
   monthlyHistoryId: string,
   budgetMode: string,
-  rolloverToApply: number = 0
+  rolloverToApply = 0
 ) {
   const dbWeek = await ctx.db.week.create({
     data: {
@@ -183,7 +189,7 @@ async function createWeekWithCategories(
 /**
  * Asegura que la semana 1 existe
  */
-async function ensureWeek1Exists(ctx: any, userId: string, year: number, month: number, monthlyBudget: number) {
+async function ensureWeek1Exists(ctx: Context, userId: string, year: number, month: number, monthlyBudget: number) {
   const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
     where: {
       userId_year_month: {
@@ -265,7 +271,7 @@ async function ensureWeek1Exists(ctx: any, userId: string, year: number, month: 
 /**
  * Recupera semanas faltantes
  */
-async function recoverMissingWeeks(ctx: any, userId: string, year: number, month: number, monthlyBudget: number) {
+async function recoverMissingWeeks(ctx: Context, userId: string, year: number, month: number, monthlyBudget: number) {
   const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
     where: {
       userId_year_month: {
@@ -292,7 +298,7 @@ async function recoverMissingWeeks(ctx: any, userId: string, year: number, month
 
   // Crear semanas faltantes
   for (const weekInfo of monthInfo.weeks) {
-    const existingWeek = existingWeeks.find((w: any) => w.weekNumber === weekInfo.weekNumber);
+    const existingWeek = existingWeeks.find((w) => w.weekNumber === weekInfo.weekNumber);
     
     if (!existingWeek) {
       const budgetMode = user?.budgetMode ?? 'categorized';
@@ -311,7 +317,7 @@ async function recoverMissingWeeks(ctx: any, userId: string, year: number, month
 /**
  * Auto-cierra semanas vencidas y aplica sus rollovers
  */
-async function autoCloseExpiredWeeks(ctx: any, userId: string, year: number, month: number, budgetMode: string) {
+async function autoCloseExpiredWeeks(ctx: Context, userId: string, year: number, month: number, budgetMode: string) {
   const currentDate = new Date();
   const monthInfo = getWeeksOfMonth(year, month, 0);
 
@@ -1290,22 +1296,22 @@ export const budgetRouter = createTRPCRouter({
          },
        });
 
-       const realTotalSpent = allExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+      const realTotalSpent = allExpenses.reduce((sum, expense) => sum + expense.amount, 0);
 
       // Actualizar el historial mensual
-       const updatedHistory = await ctx.db.monthlyHistory.update({
-         where: { id: monthlyHistory.id },
-         data: {
-           totalSpent: realTotalSpent,
-         },
-       });
+      await ctx.db.monthlyHistory.update({
+        where: { id: monthlyHistory.id },
+        data: {
+          totalSpent: realTotalSpent,
+        },
+      });
 
-       return {
-         success: true,
-         previousTotal: monthlyHistory.totalSpent,
-         newTotal: realTotalSpent,
-         difference: realTotalSpent - monthlyHistory.totalSpent,
-       };
+      return {
+        success: true,
+        previousTotal: monthlyHistory.totalSpent,
+        newTotal: realTotalSpent,
+        difference: realTotalSpent - monthlyHistory.totalSpent,
+      };
      }),
 
   // ============================================
