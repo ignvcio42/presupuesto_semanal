@@ -31,7 +31,21 @@ export function getWeeksOfMonth(year: number, month: number, totalBudget: number
   
   let weekNumber = 1;
   
-  // Continuar mientras la semana actual tenga al menos un día dentro del mes
+  // Primer paso: contar cuántas semanas tiene el mes
+  let tempDate = currentDate;
+  let weekCount = 0;
+  while (tempDate <= monthEnd) {
+    weekCount++;
+    tempDate = addWeeks(tempDate, 1);
+    if (tempDate > monthEnd) {
+      break;
+    }
+  }
+  
+  // Calcular el presupuesto por semana basado en el número REAL de semanas del mes
+  const weeklyBudget = totalBudget / weekCount;
+  
+  // Segundo paso: crear las semanas con el presupuesto correcto
   while (currentDate <= monthEnd) {
     const weekStart = currentDate;
     const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
@@ -45,7 +59,7 @@ export function getWeeksOfMonth(year: number, month: number, totalBudget: number
         weekNumber,
         startDate: weekStart,
         endDate: weekEndInMonth,
-        weeklyBudget: totalBudget / 4.33, // Promedio de semanas por mes
+        weeklyBudget: weeklyBudget,
       });
       weekNumber++;
     }
