@@ -136,6 +136,11 @@ export function MonthSelector({
                       <Text size="sm" c="dimmed">
                         {formatCurrency(history.totalSpent)} de {formatCurrency(history.totalBudget)}
                       </Text>
+                      <div>
+                        <Badge color={history.budgetMode === 'simple' ? 'green' : 'blue'}>
+                          {history.budgetMode === 'simple' ? 'Simple' : 'Categorizado'}
+                        </Badge>
+                      </div>
                     </div>
                     
                     <Badge

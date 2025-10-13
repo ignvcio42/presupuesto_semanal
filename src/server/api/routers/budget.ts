@@ -268,23 +268,18 @@ async function ensureWeek1Exists(ctx: Context, userId: string, year: number, mon
         totalBudget: monthlyBudget,
         totalSpent: 0,
         totalRollover: 0,
+        budgetMode: 'simple', // Por defecto en modo simple
       },
-    });
-
-    // Obtener el usuario para saber el modo de presupuesto
-    const user = await ctx.db.user.findUnique({
-      where: { id: userId }
     });
 
     // Crear todas las semanas
     for (const week of monthInfo.weeks) {
-      const budgetMode = user?.budgetMode ?? 'categorized';
       await createWeekWithCategories(
         ctx,
         userId,
         week,
         newMonthlyHistory.id,
-        budgetMode,
+        'simple', // Por defecto en modo simple
         0
       );
     }
@@ -301,22 +296,17 @@ async function ensureWeek1Exists(ctx: Context, userId: string, year: number, mon
     },
   });
 
-  const user = await ctx.db.user.findUnique({
-    where: { id: userId }
-  });
-
   // Crear semanas faltantes
   for (const weekInfo of monthInfo.weeks) {
     const existingWeek = existingWeeks.find(w => w.weekNumber === weekInfo.weekNumber);
     
     if (!existingWeek) {
-      const budgetMode = user?.budgetMode ?? 'categorized';
       await createWeekWithCategories(
         ctx,
         userId,
         weekInfo,
         monthlyHistory.id,
-        budgetMode,
+        monthlyHistory.budgetMode,
         0
       );
     }
@@ -347,22 +337,17 @@ async function recoverMissingWeeks(ctx: Context, userId: string, year: number, m
     },
   });
 
-  const user = await ctx.db.user.findUnique({
-    where: { id: userId }
-  });
-
   // Crear semanas faltantes
   for (const weekInfo of monthInfo.weeks) {
     const existingWeek = existingWeeks.find((w) => w.weekNumber === weekInfo.weekNumber);
     
     if (!existingWeek) {
-      const budgetMode = user?.budgetMode ?? 'categorized';
       await createWeekWithCategories(
         ctx,
         userId,
         weekInfo,
         monthlyHistory.id,
-        budgetMode,
+        monthlyHistory.budgetMode,
         0
       );
     }
@@ -437,7 +422,7 @@ async function recalculateSpentAmounts(ctx: Context, userId: string, year: numbe
 /**
  * Valida y corrige las fechas de las semanas existentes automáticamente
  */
-async function validateAndFixExistingWeeks(ctx: Context, userId: string, year: number, month: number, monthlyBudget: number, budgetMode: string) {
+async function validateAndFixExistingWeeks(ctx: Context, userId: string, year: number, month: number, monthlyBudget: number) {
   // Obtener las semanas actuales de la base de datos
   const existingWeeks = await ctx.db.week.findMany({
     where: {
@@ -450,6 +435,19 @@ async function validateAndFixExistingWeeks(ctx: Context, userId: string, year: n
     },
     orderBy: { weekNumber: 'asc' },
   });
+
+  // Obtener el historial mensual para acceder al budgetMode
+  const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
+    where: {
+      userId_year_month: {
+        userId: userId,
+        year: year,
+        month: month,
+      },
+    },
+  });
+
+  if (!monthlyHistory) return;
 
   // Obtener las semanas correctas según el cálculo
   const monthInfo = getWeeksOfMonth(year, month, monthlyBudget);
@@ -485,26 +483,14 @@ async function validateAndFixExistingWeeks(ctx: Context, userId: string, year: n
     const existingWeek = existingWeeks.find(w => w.weekNumber === correctWeek.weekNumber);
     
     if (!existingWeek) {
-      const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
-        where: {
-          userId_year_month: {
-            userId: userId,
-            year: year,
-            month: month,
-          },
-        },
-      });
-
-      if (monthlyHistory) {
-        await createWeekWithCategories(
-          ctx,
-          userId,
-          correctWeek,
-          monthlyHistory.id,
-          budgetMode,
-          0
-        );
-      }
+      await createWeekWithCategories(
+        ctx,
+        userId,
+        correctWeek,
+        monthlyHistory.id,
+        monthlyHistory.budgetMode,
+        0
+      );
     }
   }
 }
@@ -512,7 +498,7 @@ async function validateAndFixExistingWeeks(ctx: Context, userId: string, year: n
 /**
  * Auto-cierra semanas vencidas y aplica sus rollovers
  */
-async function autoCloseExpiredWeeks(ctx: Context, userId: string, year: number, month: number, budgetMode: string) {
+async function autoCloseExpiredWeeks(ctx: Context, userId: string, year: number, month: number) {
   const currentDate = new Date();
 
   // Buscar semanas abiertas que hayan terminado
@@ -558,6 +544,19 @@ async function autoCloseExpiredWeeks(ctx: Context, userId: string, year: number,
       },
     });
   }
+
+  // Obtener el budgetMode del historial mensual
+  const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
+    where: {
+      userId_year_month: {
+        userId: userId,
+        year: year,
+        month: month,
+      },
+    },
+  });
+
+  const budgetMode = monthlyHistory?.budgetMode ?? 'simple';
 
   // Aplicar todos los rollovers después de cerrar todas las semanas
   // Esto asegura que los rollovers se apliquen en orden correcto
@@ -652,6 +651,7 @@ export const budgetRouter = createTRPCRouter({
             totalBudget: 100000,
             totalSpent: 0,
             totalRollover: 0,
+            budgetMode: 'simple',
           },
         });
 
@@ -661,7 +661,7 @@ export const budgetRouter = createTRPCRouter({
             userId,
             week,
             monthlyHistory.id,
-            'categorized',
+            'simple',
             0
           );
         }
@@ -812,17 +812,17 @@ export const budgetRouter = createTRPCRouter({
               totalBudget: budgetToUse,
               totalSpent: 0,
               totalRollover: 0,
+              budgetMode: 'simple',
             },
           });
 
           for (const week of monthInfo.weeks) {
-            const budgetMode = input.budgetMode ?? user.budgetMode ?? 'categorized';
             await createWeekWithCategories(
               ctx,
               userId,
               week,
               newMonthlyHistory.id,
-              budgetMode,
+              'simple',
               0
             );
           }
@@ -1054,6 +1054,7 @@ export const budgetRouter = createTRPCRouter({
               totalBudget: user.monthlyBudget || 0,
               totalSpent: 0,
               totalRollover: 0,
+              budgetMode: 'simple',
             },
           });
         }
@@ -1063,7 +1064,7 @@ export const budgetRouter = createTRPCRouter({
           userId,
           week,
           monthlyHistory.id,
-          user.budgetMode ?? 'categorized',
+          monthlyHistory.budgetMode,
           0
         );
       }
@@ -1273,13 +1274,24 @@ export const budgetRouter = createTRPCRouter({
       await ensureWeek1Exists(ctx, userId, input.year, input.month, user.monthlyBudget || 0);
 
   // AUTO-CORRECCIÓN: Validar y corregir fechas de semanas existentes
-  await validateAndFixExistingWeeks(ctx, userId, input.year, input.month, user.monthlyBudget || 0, user.budgetMode ?? 'categorized');
+  await validateAndFixExistingWeeks(ctx, userId, input.year, input.month, user.monthlyBudget || 0);
 
   // AUTO-CORRECCIÓN: Recalcular montos gastados basándose en gastos reales
   await recalculateSpentAmounts(ctx, userId, input.year, input.month);
 
   // AUTO-CORRECCIÓN: Auto-cerrar semanas vencidas antes de consultar
-  await autoCloseExpiredWeeks(ctx, userId, input.year, input.month, user.budgetMode ?? 'categorized');
+  await autoCloseExpiredWeeks(ctx, userId, input.year, input.month);
+
+      // Obtener el historial mensual para acceder al budgetMode
+      const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
+        where: {
+          userId_year_month: {
+            userId: userId,
+            year: input.year,
+            month: input.month,
+          },
+        },
+      });
 
       // Obtener las semanas de la base de datos
       const weeks = await ctx.db.week.findMany({
@@ -1301,23 +1313,26 @@ export const budgetRouter = createTRPCRouter({
         orderBy: { weekNumber: 'asc' },
       });
 
-      return weeks.map(week => {
-        const percentageUsed = calculateBudgetPercentage(week.spentAmount, week.weeklyBudget);
-        const trafficLightColor = getTrafficLightColor(percentageUsed);
+      return {
+        weeks: weeks.map(week => {
+          const percentageUsed = calculateBudgetPercentage(week.spentAmount, week.weeklyBudget);
+          const trafficLightColor = getTrafficLightColor(percentageUsed);
 
-        return {
-          ...week,
-          percentageUsed,
-          trafficLightColor,
-          categories: week.weekCategories.map(wc => ({
-            id: wc.category.id,
-            name: wc.category.name,
-            allocatedAmount: wc.allocatedAmount,
-            spentAmount: wc.spentAmount,
-            percentageUsed: calculateBudgetPercentage(wc.spentAmount, wc.allocatedAmount),
-          })),
-        };
-      });
+          return {
+            ...week,
+            percentageUsed,
+            trafficLightColor,
+            categories: week.weekCategories.map(wc => ({
+              id: wc.category.id,
+              name: wc.category.name,
+              allocatedAmount: wc.allocatedAmount,
+              spentAmount: wc.spentAmount,
+              percentageUsed: calculateBudgetPercentage(wc.spentAmount, wc.allocatedAmount),
+            })),
+          };
+        }),
+        budgetMode: monthlyHistory?.budgetMode ?? 'simple',
+      };
     }),
 
   closeWeek: protectedProcedure
@@ -1384,7 +1399,7 @@ export const budgetRouter = createTRPCRouter({
       await ensureWeek1Exists(ctx, userId, input.year, input.month, user.monthlyBudget || 0);
 
       // AUTO-CORRECCIÓN: Validar y corregir fechas de semanas existentes
-      await validateAndFixExistingWeeks(ctx, userId, input.year, input.month, user.monthlyBudget || 0, user.budgetMode ?? 'categorized');
+      await validateAndFixExistingWeeks(ctx, userId, input.year, input.month, user.monthlyBudget || 0);
 
       // AUTO-CORRECCIÓN: Recalcular montos gastados basándose en gastos reales
       await recalculateSpentAmounts(ctx, userId, input.year, input.month);
@@ -1532,6 +1547,140 @@ export const budgetRouter = createTRPCRouter({
      }),
 
   // ============================================
+  // GESTIÓN DE MODO DE PRESUPUESTO POR MES
+  // ============================================
+
+  updateMonthlyBudgetMode: protectedProcedure
+    .input(z.object({
+      year: z.number(),
+      month: z.number(),
+      budgetMode: z.enum(['simple', 'categorized']),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+      
+      // Buscar o crear el historial mensual
+      let monthlyHistory = await ctx.db.monthlyHistory.findUnique({
+        where: {
+          userId_year_month: {
+            userId: userId,
+            year: input.year,
+            month: input.month,
+          },
+        },
+        include: {
+          weeks: {
+            include: {
+              weekCategories: true,
+            },
+          },
+        },
+      });
+
+      if (!monthlyHistory) {
+        // Si no existe, crear el historial mensual
+        const user = await ctx.db.user.findUnique({
+          where: { id: userId }
+        });
+        if (!user) throw new Error('Usuario no encontrado');
+
+        const monthInfo = getWeeksOfMonth(input.year, input.month, user.monthlyBudget || 0);
+        
+        const newMonthlyHistory = await ctx.db.monthlyHistory.create({
+          data: {
+            userId: userId,
+            year: input.year,
+            month: input.month,
+            totalBudget: user.monthlyBudget || 0,
+            totalSpent: 0,
+            totalRollover: 0,
+            budgetMode: input.budgetMode,
+          },
+        });
+        
+        monthlyHistory = {
+          ...newMonthlyHistory,
+          weeks: [],
+        };
+
+        // Crear todas las semanas
+        for (const week of monthInfo.weeks) {
+          await createWeekWithCategories(
+            ctx,
+            userId,
+            week,
+            newMonthlyHistory.id,
+            input.budgetMode,
+            0
+          );
+        }
+      } else {
+        // Si existe, actualizar el modo
+        await ctx.db.monthlyHistory.update({
+          where: { id: monthlyHistory.id },
+          data: { budgetMode: input.budgetMode },
+        });
+
+        // Si se cambió a modo categorizado, crear las asignaciones por categoría
+        if (input.budgetMode === 'categorized') {
+          const categories = await ctx.db.category.findMany({
+            where: { userId: userId },
+          });
+
+          // Si no hay categorías, crear las predeterminadas
+          if (categories.length === 0) {
+            const defaultCategories = getDefaultCategories();
+            await ctx.db.category.createMany({
+              data: defaultCategories.map(cat => ({
+                name: cat.name,
+                allocation: cat.suggestedPercentage,
+                userId: userId,
+              })),
+            });
+            
+            // Obtener las categorías recién creadas
+            const newCategories = await ctx.db.category.findMany({
+              where: { userId: userId },
+            });
+            categories.push(...newCategories);
+          }
+
+          // Crear asignaciones por categoría para todas las semanas
+          for (const week of monthlyHistory.weeks) {
+            // Eliminar asignaciones existentes
+            await ctx.db.weekCategory.deleteMany({
+              where: { weekId: week.id },
+            });
+
+            // Crear nuevas asignaciones
+            await Promise.all(
+              categories.map(category =>
+                ctx.db.weekCategory.create({
+                  data: {
+                    categoryId: category.id,
+                    weekId: week.id,
+                    allocatedAmount: (week.weeklyBudget * category.allocation) / 100,
+                  },
+                })
+              )
+            );
+          }
+        } else if (input.budgetMode === 'simple') {
+          // Si se cambió a modo simple, eliminar todas las asignaciones por categoría
+          await ctx.db.weekCategory.deleteMany({
+            where: {
+              weekId: {
+                in: monthlyHistory.weeks.map(w => w.id),
+              },
+            },
+          });
+        }
+      }
+
+      return { success: true };
+    }),
+
+  // ============================================
   // UTILIDADES
   // ============================================
   
@@ -1571,8 +1720,9 @@ export const budgetRouter = createTRPCRouter({
            month,
            totalBudget: user.monthlyBudget || 0,
            totalSpent: 0,
-           totalRollover: 0,
-         },
+          totalRollover: 0,
+          budgetMode: 'simple',
+        },
        });
 
       for (const week of monthInfo.weeks) {
@@ -1581,7 +1731,7 @@ export const budgetRouter = createTRPCRouter({
           userId,
           week,
           monthlyHistory.id,
-          user.budgetMode ?? 'categorized',
+          'simple',
           0
         );
       }
@@ -1601,7 +1751,7 @@ export const budgetRouter = createTRPCRouter({
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth() + 1;
 
-      await autoCloseExpiredWeeks(ctx, userId, year, month, user.budgetMode ?? 'categorized');
+      await autoCloseExpiredWeeks(ctx, userId, year, month);
 
       return { 
         message: 'Semanas vencidas cerradas automáticamente',
@@ -1710,8 +1860,9 @@ export const budgetRouter = createTRPCRouter({
            month,
            totalBudget: user.monthlyBudget || 0,
            totalSpent: 0,
-           totalRollover: 0,
-         },
+          totalRollover: 0,
+          budgetMode: 'simple',
+        },
        });
 
       for (const week of monthInfo.weeks) {
@@ -1720,7 +1871,7 @@ export const budgetRouter = createTRPCRouter({
           userId,
           week,
           monthlyHistory.id,
-          user.budgetMode ?? 'categorized',
+          'simple',
           0
         );
       }
@@ -1821,7 +1972,7 @@ export const budgetRouter = createTRPCRouter({
               userId,
               correctWeek,
               monthlyHistory.id,
-              user.budgetMode ?? 'categorized',
+              'simple',
               0
             );
             createdWeeks++;

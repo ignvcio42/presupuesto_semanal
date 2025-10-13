@@ -33,6 +33,9 @@ model User {
   monthlyHistory MonthlyHistory[]
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
+
+  @@index([email])
+  @@index([role])
 }
 
 model Category {
@@ -45,6 +48,9 @@ model Category {
   weekCategories WeekCategory[]
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, name])
 }
 
 model Expense {
@@ -59,6 +65,13 @@ model Expense {
   week        Week?    @relation(fields: [weekId], references: [id])
   weekId      String?
   createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, date])
+  @@index([weekId])
+  @@index([categoryId])
+  @@index([userId, weekId])
+  @@index([userId, categoryId])
 }
 
 model Week {
@@ -78,6 +91,14 @@ model Week {
   monthlyHistoryId String
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([monthlyHistoryId])
+  @@index([userId, monthlyHistoryId])
+  @@index([userId, weekNumber])
+  @@index([userId, isClosed])
+  @@index([startDate])
+  @@index([endDate])
 }
 
 model WeekCategory {
@@ -90,6 +111,11 @@ model WeekCategory {
   weekId          String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@index([weekId])
+  @@index([categoryId])
+  @@index([weekId, categoryId])
+  @@unique([weekId, categoryId])
 }
 
 model MonthlyHistory {
@@ -99,6 +125,7 @@ model MonthlyHistory {
   totalBudget       Float
   totalSpent        Float
   totalRollover     Float
+  budgetMode        String   @default("simple") // 'simple' or 'categorized'
   weeks             Week[]
   user              User     @relation(fields: [userId], references: [id])
   userId            String
@@ -106,4 +133,7 @@ model MonthlyHistory {
   updatedAt         DateTime @updatedAt
   
   @@unique([userId, year, month])
+  @@index([userId])
+  @@index([userId, year])
+  @@index([year, month])
 }

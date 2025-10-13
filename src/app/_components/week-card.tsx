@@ -175,7 +175,10 @@ export function WeekCard({ week, onCloseWeek, onViewDetails, isCurrentWeek, budg
             )}
           </Group>
           
-          {week.categories.slice(0, 3).map((category) => (
+          {week.categories
+            .sort((a, b) => (b.allocatedAmount - b.spentAmount) - (a.allocatedAmount - a.spentAmount))
+            .slice(0, 3)
+            .map((category) => (
             <Group key={category.id} justify="space-between">
               <Text size="xs" c="dimmed">{category.name}:</Text>
               <Text size="xs">
@@ -186,7 +189,10 @@ export function WeekCard({ week, onCloseWeek, onViewDetails, isCurrentWeek, budg
           
           <Collapse in={categoriesExpanded}>
             <Stack gap="xs" mt="xs">
-              {week.categories.slice(3).map((category) => (
+              {week.categories
+                .sort((a, b) => (b.allocatedAmount - b.spentAmount) - (a.allocatedAmount - a.spentAmount))
+                .slice(3)
+                .map((category) => (
                 <Group key={category.id} justify="space-between">
                   <Text size="xs" c="dimmed">{category.name}:</Text>
                   <Text size="xs">

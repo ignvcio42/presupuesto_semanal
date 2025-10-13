@@ -87,10 +87,13 @@ export function BudgetDashboard() {
   // Queries
   const { data: user, refetch: refetchUser } = api.budget.getUser.useQuery();
   const { data: categories, refetch: refetchCategories } = api.budget.getCategories.useQuery();
-  const { data: weeks, refetch: refetchWeeks } = api.budget.getWeeks.useQuery({
+  const { data: weeksData, refetch: refetchWeeks } = api.budget.getWeeks.useQuery({
     year: displayYear,
     month: displayMonth,
   });
+  
+  const weeks = Array.isArray(weeksData) ? weeksData : weeksData?.weeks ?? [];
+  const monthlyBudgetMode = Array.isArray(weeksData) ? 'simple' : weeksData?.budgetMode ?? 'simple';
   
   // Utils para invalidación
   const utils = api.useUtils();
@@ -146,6 +149,25 @@ export function BudgetDashboard() {
     },
   });
 
+  const updateMonthlyBudgetMode = api.budget.updateMonthlyBudgetMode.useMutation({
+    onSuccess: () => {
+      void refetchWeeks();
+      void refetchCategories();
+      notifications.show({
+        title: 'Modo actualizado',
+        message: 'El modo de presupuesto del mes ha sido actualizado exitosamente',
+        color: 'green',
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        title: 'Error',
+        message: error.message,
+        color: 'red',
+      });
+    },
+  });
+
   // Función para recargar todos los datos
   const handleRefreshData = async () => {
     setIsRefreshing(true);
@@ -180,15 +202,11 @@ export function BudgetDashboard() {
   const settingsForm = useForm({
     initialValues: {
       monthlyBudget: user?.monthlyBudget ?? 0,
-      budgetMode: (user?.budgetMode as 'simple' | 'categorized') ?? 'categorized',
     },
   });
 
-  // Detectar si el modo cambió
-  const modeChanged = settingsForm.values.budgetMode !== user?.budgetMode;
-
   const handleCloseWeek = async (weekId: string) => {
-    const week = weeks?.find(w => w.id === weekId);
+    const week = weeks.find((w: any) => w.id === weekId);
     if (!week) return;
 
     const rollover = week.weeklyBudget - week.spentAmount;
@@ -210,19 +228,6 @@ export function BudgetDashboard() {
   };
 
   const handleUpdateSettings = async (values: typeof settingsForm.values) => {
-    // Si el modo cambió, mostrar advertencia
-    if (modeChanged) {
-      const confirmed = confirm(
-        '⚠️ ADVERTENCIA: Cambiar el modo de presupuesto eliminará todas las asignaciones por categoría de las semanas actuales.\n\n' +
-        'Esto significa que perderás el progreso de las categorías en las semanas de este mes.\n\n' +
-        '¿Estás seguro de que quieres continuar?'
-      );
-      
-      if (!confirmed) {
-        return;
-      }
-    }
-    
     await updateUser.mutateAsync(values);
   };
 
@@ -243,7 +248,7 @@ export function BudgetDashboard() {
   };
 
   const currentWeekNumber = getCurrentWeek(displayYear, displayMonth);
-  const currentWeek = weeks?.find(w => w.weekNumber === currentWeekNumber);
+  const currentWeek = weeks.find((w: any) => w.weekNumber === currentWeekNumber);
   
   const handleMonthSelect = (year: number, month: number) => {
     setSelectedYear(year);
@@ -314,7 +319,26 @@ export function BudgetDashboard() {
               {formatCurrency(user.monthlyBudget || 0)} mensual
             </Badge>
             
-            {user.budgetMode === 'categorized' && (
+            <Select
+              value={monthlyBudgetMode}
+              onChange={(value) => {
+                if (value && (value === 'simple' || value === 'categorized')) {
+                  updateMonthlyBudgetMode.mutate({
+                    year: displayYear,
+                    month: displayMonth,
+                    budgetMode: value,
+                  });
+                }
+              }}
+              data={[
+                { value: 'simple', label: 'Modo Simple' },
+                { value: 'categorized', label: 'Modo Categorías' },
+              ]}
+              size="sm"
+              w={150}
+            />
+            
+            {monthlyBudgetMode === 'categorized' && (
               <Button
                 variant="light"
                 size="sm"
@@ -349,7 +373,7 @@ export function BudgetDashboard() {
               Historial
             </Button>
             
-            {user.budgetMode === 'categorized' && (
+            {monthlyBudgetMode === 'categorized' && (
               <Button
                 variant="light"
                 size="xs"
@@ -367,6 +391,28 @@ export function BudgetDashboard() {
               <IconSettings size={18} />
             </ActionIcon>
           </Group>
+        </Group>
+        
+        {/* Selector de modo - Mobile */}
+        <Group justify="center" className="sm:hidden">
+          <Select
+            value={monthlyBudgetMode}
+            onChange={(value) => {
+              if (value && (value === 'simple' || value === 'categorized')) {
+                updateMonthlyBudgetMode.mutate({
+                  year: displayYear,
+                  month: displayMonth,
+                  budgetMode: value,
+                });
+              }
+            }}
+            data={[
+              { value: 'simple', label: 'Modo Simple' },
+              { value: 'categorized', label: 'Modo Categorías' },
+            ]}
+            size="sm"
+            w={200}
+          />
         </Group>
       </Stack>
 
@@ -432,14 +478,14 @@ export function BudgetDashboard() {
                         week={currentWeek}
                         onCloseWeek={handleCloseWeek}
                         isCurrentWeek={true}
-                        budgetMode={user?.budgetMode as 'simple' | 'categorized'}
+                        budgetMode={monthlyBudgetMode as 'simple' | 'categorized'}
                         onExpenseUpdate={() => {
                           void refetchWeeks();
                           void refetchCategories();
                         }}
                       />
                       
-                      {user.budgetMode === 'categorized' && (
+                      {monthlyBudgetMode === 'categorized' && (
                         <CategoryProgress
                           categories={currentWeek.categories}
                           totalBudget={currentWeek.weeklyBudget}
@@ -454,7 +500,7 @@ export function BudgetDashboard() {
                     <Stack gap="md">
                       <ExpenseForm
                         categories={categories}
-                        budgetMode={user?.budgetMode as 'simple' | 'categorized' | undefined}
+                        budgetMode={monthlyBudgetMode as 'simple' | 'categorized' | undefined}
                         onSuccess={() => {
                           void refetchWeeks();
                           void refetchCategories();
@@ -546,13 +592,13 @@ export function BudgetDashboard() {
         <Tabs.Panel value="month" pt="md">
           {weeks && weeks.length > 0 ? (
             <Grid>
-              {weeks.map((week) => (
+              {weeks.map((week: any) => (
                 <Grid.Col key={week.id} span={{ base: 12, md: 6, lg: 4 }}>
                   <WeekCard
                     week={week}
                     onCloseWeek={handleCloseWeek}
                     isCurrentWeek={week.weekNumber === currentWeekNumber}
-                    budgetMode={user?.budgetMode as 'simple' | 'categorized'}
+                    budgetMode={monthlyBudgetMode as 'simple' | 'categorized'}
                     onExpenseUpdate={() => {
                       void refetchWeeks();
                       void refetchCategories();
@@ -624,23 +670,6 @@ export function BudgetDashboard() {
               {...settingsForm.getInputProps('monthlyBudget')}
             />
 
-            <Select
-              label="Modo de Presupuesto"
-              data={[
-                { value: 'simple', label: 'Semanal Simple' },
-                { value: 'categorized', label: 'Por Categorías' },
-              ]}
-              {...settingsForm.getInputProps('budgetMode')}
-            />
-
-            {modeChanged && (
-              <Alert icon={<IconAlertCircle size={16} />} color="orange" title="Advertencia">
-                <Text size="sm">
-                  Cambiar el modo de presupuesto eliminará todas las asignaciones por categoría 
-                  de las semanas actuales. Perderás el progreso de las categorías en este mes.
-                </Text>
-              </Alert>
-            )}
 
             <Divider />
 
