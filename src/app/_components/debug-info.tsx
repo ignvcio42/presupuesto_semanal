@@ -15,6 +15,8 @@ export function DebugInfo() {
   const applyRollovers = api.budget.applyPendingRollovers.useMutation();
   const autoCloseWeeks = api.budget.autoCloseWeeks.useMutation();
   const resetBudget = api.budget.resetBudget.useMutation();
+  const validateAndFixWeeks = api.budget.validateAndFixWeeks.useMutation();
+  const recoverMissingWeeks = api.budget.recoverMissingWeeks.useMutation();
 
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
@@ -80,6 +82,38 @@ export function DebugInfo() {
             fullWidth
           >
             Auto-Cerrar Semanas Vencidas
+          </Button>
+          <Button
+            size="xs"
+            variant="light"
+            color="blue"
+            onClick={() => {
+              const currentDate = new Date();
+              validateAndFixWeeks.mutate({
+                year: currentDate.getFullYear(),
+                month: currentDate.getMonth() + 1,
+              });
+            }}
+            loading={validateAndFixWeeks.isPending}
+            fullWidth
+          >
+            Validar y Corregir Semanas
+          </Button>
+          <Button
+            size="xs"
+            variant="light"
+            color="cyan"
+            onClick={() => {
+              const currentDate = new Date();
+              recoverMissingWeeks.mutate({
+                year: currentDate.getFullYear(),
+                month: currentDate.getMonth() + 1,
+              });
+            }}
+            loading={recoverMissingWeeks.isPending}
+            fullWidth
+          >
+            Recuperar Semanas Faltantes
           </Button>
           <Button
             size="xs"

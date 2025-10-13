@@ -22,12 +22,12 @@ import {
   Title
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { 
-  IconPlus, 
-  IconTrash, 
-  IconAlertCircle, 
-  IconEdit, 
-  IconCheck, 
+import {
+  IconPlus,
+  IconTrash,
+  IconAlertCircle,
+  IconEdit,
+  IconCheck,
   IconX,
   IconWand,
   IconInfoCircle,
@@ -36,7 +36,7 @@ import {
   IconLockOpen
 } from '@tabler/icons-react';
 import { api } from '~/trpc/react';
-import { formatCurrency } from '~/lib/date-utils';
+import { formatCurrency, getWeeksOfMonth } from '~/lib/date-utils';
 
 interface CategorySettingsProps {
   opened: boolean;
@@ -171,14 +171,14 @@ export function CategorySettings({ opened, onClose, categories, monthlyBudget = 
   const handleSuggestAllocation = (index: number) => {
     const categories = form.values.categories;
     const currentCategory = categories[index];
-    
+
     if (!currentCategory || currentCategory.isLocked) return;
-    
+
     // Calcular el porcentaje disponible (excluyendo la categoría actual)
-    const availablePercentage = 100 - categories.reduce((sum, cat, i) => 
+    const availablePercentage = 100 - categories.reduce((sum, cat, i) =>
       i === index ? sum : sum + cat.allocation, 0
     );
-    
+
     if (availablePercentage > 0) {
       const suggestedAllocation = Math.round(Math.max(availablePercentage, 1));
       form.setFieldValue(`categories.${index}.allocation`, suggestedAllocation);
@@ -188,7 +188,7 @@ export function CategorySettings({ opened, onClose, categories, monthlyBudget = 
   const handleAddCategory = () => {
     const availablePercentage = 100 - totalAllocation;
     const suggestedAllocation = Math.min(availablePercentage * 0.3, 20);
-    
+
     form.insertListItem('categories', {
       id: `temp-${Date.now()}`,
       name: '',
@@ -211,7 +211,7 @@ export function CategorySettings({ opened, onClose, categories, monthlyBudget = 
     deleteCategory.mutate(category.id, {
       onSuccess: () => {
         form.removeListItem('categories', index);
-        
+
         // Si está habilitada la ayuda automática, redistribuir
         if (autoHelp && form.values.categories.length > 1) {
           setTimeout(() => handleAutoRedistribute(), 100);
@@ -285,7 +285,7 @@ export function CategorySettings({ opened, onClose, categories, monthlyBudget = 
           <Card withBorder p="md">
             <Flex justify="space-between" align="center" mb="sm">
               <Title order={4}>Distribución del Presupuesto</Title>
-              <Badge 
+              <Badge
                 color={isValid ? 'green' : totalAllocation > 100 ? 'red' : 'yellow'}
                 variant="light"
               >
@@ -302,7 +302,7 @@ export function CategorySettings({ opened, onClose, categories, monthlyBudget = 
                 )}
               </Badge>
             </Flex>
-            
+
             <Progress
               value={Math.min(totalAllocation, 100)}
               color={isValid ? 'green' : totalAllocation > 100 ? 'red' : 'yellow'}
@@ -310,17 +310,17 @@ export function CategorySettings({ opened, onClose, categories, monthlyBudget = 
               radius="xl"
               mb="sm"
             />
-            
+
             <Group justify="space-between" align="center">
               <Text size="sm" c={isValid ? 'green' : totalAllocation > 100 ? 'red' : 'yellow'}>
-                {isValid 
-                  ? 'Distribución perfecta ✓' 
-                  : totalAllocation > 100 
-                    ? `Excede por ${(totalAllocation - 100).toFixed(1)}%` 
+                {isValid
+                  ? 'Distribución perfecta ✓'
+                  : totalAllocation > 100
+                    ? `Excede por ${(totalAllocation - 100).toFixed(1)}%`
                     : `Faltan ${(100 - totalAllocation).toFixed(1)}%`
                 }
               </Text>
-              
+
               {!isValid && (
                 <Button
                   size="xs"
@@ -350,7 +350,7 @@ export function CategorySettings({ opened, onClose, categories, monthlyBudget = 
             </Group>
             {autoHelp && (
               <Text size="xs" c="dimmed" mt="xs">
-                Al eliminar categorías, los porcentajes se redistribuirán automáticamente para mantener 100%. 
+                Al eliminar categorías, los porcentajes se redistribuirán automáticamente para mantener 100%.
                 Las categorías bloqueadas (🔒) mantendrán su porcentaje fijo.
               </Text>
             )}
@@ -362,7 +362,7 @@ export function CategorySettings({ opened, onClose, categories, monthlyBudget = 
             {form.values.categories.map((category, index) => {
               const isEditing = editingCategory === category.id || category.id.startsWith('temp-');
               const isNew = category.id.startsWith('temp-');
-              
+
               return (
                 <Card key={category.id} withBorder p="sm">
                   <Group align="flex-end">
@@ -373,7 +373,7 @@ export function CategorySettings({ opened, onClose, categories, monthlyBudget = 
                       {...form.getInputProps(`categories.${index}.name`)}
                       disabled={!isEditing}
                     />
-                    
+
                     <NumberInput
                       label="Asignación (%)"
                       placeholder="0"
@@ -470,14 +470,19 @@ export function CategorySettings({ opened, onClose, categories, monthlyBudget = 
                       )}
                     </Group>
                   </Group>
-                  
+
                   {/* Mostrar información adicional */}
                   <Group justify="space-between" align="center" mt="xs">
-                    {category.allocation > 0 && monthlyBudget && (
-                      <Text size="xs" c="dimmed">
-                        ≈ {formatCurrency((category.allocation / 100) * monthlyBudget)} mensual
-                      </Text>
-                    )}
+                    {category.allocation > 0 && monthlyBudget && (() => {
+                      const currentDate = new Date();
+                      const monthInfo = getWeeksOfMonth(currentDate.getFullYear(), currentDate.getMonth() + 1, monthlyBudget);
+                      const weeklyAmount = (category.allocation / 100) * monthlyBudget / monthInfo.totalWeeks;
+                      return (
+                        <Text size="xs" c="dimmed">
+                          ≈ {formatCurrency(weeklyAmount)} semanal
+                        </Text>
+                      );
+                    })()}
                     {category.isLocked && (
                       <Badge size="xs" color="orange" variant="light">
                         <Group gap={4}>
@@ -494,33 +499,39 @@ export function CategorySettings({ opened, onClose, categories, monthlyBudget = 
 
           <Divider />
 
-          <Group justify="space-between">
-            <Button
-              variant="outline"
-              leftSection={<IconPlus size={16} />}
-              onClick={handleAddCategory}
-              disabled={totalAllocation >= 100}
-            >
-              Agregar Categoría
-            </Button>
-
-            <Group>
+          <div className='flex flex-col gap-2'>
+            <Text size="sm" fw={500}>Total: {formatCurrency(monthlyBudget || 0)} mensual</Text>
+          </div>
+          <div>
+            <Group justify="space-between">
               <Button
                 variant="outline"
-                onClick={onClose}
-                disabled={isSubmitting}
+                leftSection={<IconPlus size={16} />}
+                onClick={handleAddCategory}
+                disabled={totalAllocation >= 100}
               >
-                Cancelar
+                Agregar Categoría
               </Button>
-              <Button
-                type="submit"
-                loading={isSubmitting}
-                disabled={!isValid}
-              >
-                Guardar Cambios
-              </Button>
+
+              <Group>
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={isSubmitting}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  loading={isSubmitting}
+                  disabled={!isValid}
+                >
+                  Guardar Cambios
+                </Button>
+              </Group>
             </Group>
-          </Group>
+
+          </div>
         </Stack>
       </form>
     </Modal>

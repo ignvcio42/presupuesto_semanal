@@ -35,17 +35,25 @@ export default function AdminDashboard() {
 
   // Verificar si es admin
   useEffect(() => {
+    console.log('Admin page - Status:', status, 'Session:', session);
+    
     if (status === 'loading') return;
     
     if (!session) {
+      console.log('Admin page - No session, redirecting to signin');
       router.push('/auth/signin');
       return;
     }
     
+    console.log('Admin page - User role:', session.user.role);
+    
     if (session.user.role !== 'admin') {
+      console.log('Admin page - Not admin, redirecting to home');
       router.push('/');
       return;
     }
+    
+    console.log('Admin page - Access granted');
   }, [session, status, router]);
 
   const { data: adminStats, isLoading: statsLoading } = api.budget.getAdminStats.useQuery(
@@ -232,79 +240,155 @@ export default function AdminDashboard() {
                 )}
               </Group>
               
-              <Table>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Usuario</Table.Th>
-                    <Table.Th>Email</Table.Th>
-                    <Table.Th>Rol</Table.Th>
-                    <Table.Th>Presupuesto</Table.Th>
-                    <Table.Th>Gastado</Table.Th>
-                    <Table.Th>Progreso</Table.Th>
-                    <Table.Th>Acciones</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
+              {/* Desktop Table */}
+              <div className="hidden md:block">
+                <Table>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Usuario</Table.Th>
+                      <Table.Th>Email</Table.Th>
+                      <Table.Th>Rol</Table.Th>
+                      <Table.Th>Presupuesto</Table.Th>
+                      <Table.Th>Gastado</Table.Th>
+                      <Table.Th>Progreso</Table.Th>
+                      <Table.Th>Acciones</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {users?.map((user) => {
+                      const progress = user.monthlyBudget 
+                        ? (user.totalSpent / user.monthlyBudget) * 100 
+                        : 0;
+                      
+                      return (
+                        <Table.Tr key={user.id}>
+                          <Table.Td>
+                            <Text fw={500}>{user.name}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm" c="dimmed">{user.email}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge 
+                              color={user.role === 'admin' ? 'red' : 'blue'}
+                              variant="light"
+                              size="sm"
+                            >
+                              {user.role === 'admin' ? 'Admin' : 'Usuario'}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm">
+                              {user.monthlyBudget ? formatCurrency(user.monthlyBudget) : 'No configurado'}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm" c="red">
+                              {formatCurrency(user.totalSpent)}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Progress 
+                              value={progress} 
+                              size="sm" 
+                              color={progress > 100 ? 'red' : progress > 80 ? 'yellow' : 'green'}
+                            />
+                            <Text size="xs" c="dimmed" mt={2}>
+                              {progress.toFixed(1)}%
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            {user.role !== 'admin' && (
+                              <ActionIcon
+                                variant="light"
+                                color="red"
+                                size="sm"
+                                onClick={() => handleDeleteUser(user)}
+                                loading={deleteUser.isPending}
+                              >
+                                <IconTrash size={14} />
+                              </ActionIcon>
+                            )}
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
+                  </Table.Tbody>
+                </Table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="md:hidden">
+                <Stack gap="sm">
                   {users?.map((user) => {
                     const progress = user.monthlyBudget 
                       ? (user.totalSpent / user.monthlyBudget) * 100 
                       : 0;
                     
                     return (
-                      <Table.Tr key={user.id}>
-                        <Table.Td>
-                          <Text fw={500}>{user.name}</Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="sm" c="dimmed">{user.email}</Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Badge 
-                            color={user.role === 'admin' ? 'red' : 'blue'}
-                            variant="light"
-                            size="sm"
-                          >
-                            {user.role === 'admin' ? 'Admin' : 'Usuario'}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="sm">
-                            {user.monthlyBudget ? formatCurrency(user.monthlyBudget) : 'No configurado'}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="sm" c="red">
-                            {formatCurrency(user.totalSpent)}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Progress 
-                            value={progress} 
-                            size="sm" 
-                            color={progress > 100 ? 'red' : progress > 80 ? 'yellow' : 'green'}
-                          />
-                          <Text size="xs" c="dimmed" mt={2}>
-                            {progress.toFixed(1)}%
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          {user.role !== 'admin' && (
-                            <ActionIcon
-                              variant="light"
-                              color="red"
-                              size="sm"
-                              onClick={() => handleDeleteUser(user)}
-                              loading={deleteUser.isPending}
-                            >
-                              <IconTrash size={14} />
-                            </ActionIcon>
-                          )}
-                        </Table.Td>
-                      </Table.Tr>
+                      <Card key={user.id} withBorder p="sm">
+                        <Stack gap="xs">
+                          <Group justify="space-between" align="flex-start">
+                            <div>
+                              <Text fw={500} size="sm">{user.name}</Text>
+                              <Text size="xs" c="dimmed">{user.email}</Text>
+                            </div>
+                            <Group gap="xs">
+                              <Badge 
+                                color={user.role === 'admin' ? 'red' : 'blue'}
+                                variant="light"
+                                size="xs"
+                              >
+                                {user.role === 'admin' ? 'Admin' : 'Usuario'}
+                              </Badge>
+                              {user.role !== 'admin' && (
+                                <ActionIcon
+                                  color="red"
+                                  variant="light"
+                                  size="sm"
+                                  onClick={() => handleDeleteUser(user)}
+                                  loading={deleteUser.isPending}
+                                >
+                                  <IconTrash size={14} />
+                                </ActionIcon>
+                              )}
+                            </Group>
+                          </Group>
+                          
+                          <Group justify="space-between" align="center">
+                            <div>
+                              <Text size="xs" c="dimmed">Presupuesto</Text>
+                              <Text size="sm" fw={500}>
+                                {user.monthlyBudget ? formatCurrency(user.monthlyBudget) : 'No configurado'}
+                              </Text>
+                            </div>
+                            <div>
+                              <Text size="xs" c="dimmed">Gastado</Text>
+                              <Text size="sm" fw={500} c="red">
+                                {formatCurrency(user.totalSpent)}
+                              </Text>
+                            </div>
+                          </Group>
+                          
+                          <div>
+                            <Group justify="space-between" align="center" mb="xs">
+                              <Text size="xs" c="dimmed">Progreso</Text>
+                              <Text size="xs" c="dimmed">
+                                {progress.toFixed(1)}%
+                              </Text>
+                            </Group>
+                            <Progress 
+                              value={progress} 
+                              size="sm" 
+                              color={progress > 100 ? 'red' : progress > 80 ? 'yellow' : 'green'}
+                            />
+                          </div>
+                        </Stack>
+                      </Card>
                     );
                   })}
-                </Table.Tbody>
-              </Table>
+                </Stack>
+              </div>
             </Stack>
           </Card>
         </Stack>

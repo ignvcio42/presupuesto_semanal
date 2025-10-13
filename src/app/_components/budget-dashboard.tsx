@@ -18,14 +18,18 @@ import {
   NumberInput,
   Select,
   Switch,
-  Divider
+  Divider,
+  Affix,
+  Transition,
+  rem
 } from '@mantine/core';
 import { 
   IconSettings, 
   IconCalendar, 
   IconAlertCircle,
   IconChartBar,
-  IconHistory
+  IconHistory,
+  IconPlus
 } from '@tabler/icons-react';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -37,7 +41,7 @@ import { MonthlyHistory } from './monthly-history';
 import { CategorySettings } from './category-settings';
 import { MonthSelector } from './month-selector';
 import { Header } from './header';
-// import { DebugInfo } from './debug-info';
+import { DebugInfo } from './debug-info';
 import { formatCurrency, getMonthName, getCurrentWeek } from '~/lib/date-utils';
 
 export function BudgetDashboard() {
@@ -48,6 +52,29 @@ export function BudgetDashboard() {
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
   const [showMonthSelector, setShowMonthSelector] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [expenseFormOpened, setExpenseFormOpened] = useState(false);
+  
+  // Refetch automático cuando se cambia a la pestaña de historial
+  const handleTabChange = async (value: string | null) => {
+    setActiveTab(value);
+    
+    // Si se cambia a historial, hacer refetch automático completo
+    if (value === 'history') {
+      try {
+        // Invalidar todas las queries relacionadas con budget
+        await utils.budget.invalidate();
+        
+        // También hacer refetch manual para asegurar
+        await Promise.all([
+          refetchWeeks(),
+          refetchUser(),
+          refetchCategories(),
+        ]);
+      } catch (error) {
+        console.error('Error al actualizar datos del historial:', error);
+      }
+    }
+  };
   
   const currentDate = new Date();
   const currentYear = currentDate.getFullYear();
@@ -64,6 +91,9 @@ export function BudgetDashboard() {
     year: displayYear,
     month: displayMonth,
   });
+  
+  // Utils para invalidación
+  const utils = api.useUtils();
 
 
   // Mutations
@@ -253,138 +283,228 @@ export function BudgetDashboard() {
     <>
       <Header />
       <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <div>
-          <Title order={1}>Presupuesto Semanal</Title>
-          <Group gap="md" align="center">
-            <Text c="dimmed">
-              {getMonthName(displayMonth)} {displayYear}
-            </Text>
-            {selectedYear && selectedMonth && (
-              <Badge color="blue" variant="light" size="sm">
-                Historial
-              </Badge>
+      <Stack gap="md" mb="xl">
+        {/* Header principal */}
+        <Group justify="space-between" align="flex-start">
+          <div>
+            <Title order={1}>Presupuesto Semanal</Title>
+            <Group gap="md" align="center" mt="xs">
+              <Text c="dimmed" size="md">
+                {getMonthName(displayMonth)} {displayYear}
+              </Text>
+              {selectedYear && selectedMonth && (
+                <Badge color="blue" variant="light" size="sm">
+                  Historial
+                </Badge>
+              )}
+            </Group>
+          </div>
+          
+          {/* Botones de acción - Desktop */}
+          <Group className="hidden sm:flex">
+            <Button
+              variant="light"
+              size="sm"
+              onClick={() => setShowMonthSelector(true)}
+            >
+              Ver Historial
+            </Button>
+            
+            <Badge color="blue" variant="light" size="lg">
+              {formatCurrency(user.monthlyBudget || 0)} mensual
+            </Badge>
+            
+            {user.budgetMode === 'categorized' && (
+              <Button
+                variant="light"
+                size="sm"
+                onClick={() => setCategorySettingsOpened(true)}
+              >
+                Configurar Categorías
+              </Button>
             )}
+            
+            <ActionIcon
+              variant="light"
+              size="lg"
+              onClick={() => setSettingsOpened(true)}
+            >
+              <IconSettings size={20} />
+            </ActionIcon>
           </Group>
-        </div>
-        
-         <Group>
-           <Button
-             variant="light"
-             size="sm"
-             onClick={() => setShowMonthSelector(true)}
-           >
-             Ver Historial
-           </Button>
-           
-           <Badge color="blue" variant="light" size="lg">
-             {formatCurrency(user.monthlyBudget || 0)} mensual
-           </Badge>
-           
-           {user.budgetMode === 'categorized' && (
-             <Button
-               variant="light"
-               size="sm"
-               onClick={() => setCategorySettingsOpened(true)}
-             >
-               Configurar Categorías
-             </Button>
-           )}
-           
-           <ActionIcon
-             variant="light"
-             size="lg"
-             onClick={() => setSettingsOpened(true)}
-           >
-             <IconSettings size={20} />
-           </ActionIcon>
-         </Group>
-       </Group>
+        </Group>
 
-       {/* Debug Info - Temporal
-       <DebugInfo /> */}
+        {/* Información del presupuesto - Mobile */}
+        <Group justify="space-between" className="sm:hidden">
+          <Badge color="blue" variant="light" size="md">
+            {formatCurrency(user.monthlyBudget || 0)} mensual
+          </Badge>
+          
+          <Group gap="xs">
+            <Button
+              variant="light"
+              size="xs"
+              onClick={() => setShowMonthSelector(true)}
+            >
+              Historial
+            </Button>
+            
+            {user.budgetMode === 'categorized' && (
+              <Button
+                variant="light"
+                size="xs"
+                onClick={() => setCategorySettingsOpened(true)}
+              >
+                Categorías
+              </Button>
+            )}
+            
+            <ActionIcon
+              variant="light"
+              size="md"
+              onClick={() => setSettingsOpened(true)}
+            >
+              <IconSettings size={18} />
+            </ActionIcon>
+          </Group>
+        </Group>
+      </Stack>
 
-      <Tabs value={activeTab} onChange={setActiveTab} mb="xl">
+       {/* Debug Info - Solo para administradores */}
+       {user?.role === 'admin' && <DebugInfo />}
+
+      <Tabs value={activeTab} onChange={handleTabChange} mb="xl">
         <Tabs.List>
-          <Tabs.Tab value="current" leftSection={<IconCalendar size={16} />}>
-            Semana Actual
+          <Tabs.Tab 
+            value="current" 
+            leftSection={<IconCalendar size={16} />}
+            className="text-xs sm:text-sm"
+          >
+            <span className="hidden sm:inline">Semana Actual</span>
+            <span className="sm:hidden">Actual</span>
           </Tabs.Tab>
-          <Tabs.Tab value="month" leftSection={<IconChartBar size={16} />}>
-            Vista Mensual
+          <Tabs.Tab 
+            value="month" 
+            leftSection={<IconChartBar size={16} />}
+            className="text-xs sm:text-sm"
+          >
+            <span className="hidden sm:inline">Vista Mensual</span>
+            <span className="sm:hidden">Mensual</span>
           </Tabs.Tab>
-          <Tabs.Tab value="history" leftSection={<IconHistory size={16} />}>
-            Historial
+          <Tabs.Tab 
+            value="history" 
+            leftSection={<IconHistory size={16} />}
+            className="text-xs sm:text-sm"
+          >
+            <span className="hidden sm:inline">Historial</span>
+            <span className="sm:hidden">Historial</span>
           </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="current" pt="md">
           {weeks && weeks.length > 0 ? (
             currentWeek ? (
-              <Grid>
-                <Grid.Col span={{ base: 12, md: 8 }}>
-                  <Stack gap="md">
-                    <WeekCard
-                      week={currentWeek}
-                      onCloseWeek={handleCloseWeek}
-                      isCurrentWeek={true}
-                      budgetMode={user?.budgetMode as 'simple' | 'categorized'}
-                      onExpenseUpdate={() => {
-                        void refetchWeeks();
-                        void refetchCategories();
-                      }}
-                    />
-                    
-                    {user.budgetMode === 'categorized' && (
-                      <CategoryProgress
-                        categories={currentWeek.categories}
-                        totalBudget={currentWeek.weeklyBudget}
-                        totalSpent={currentWeek.spentAmount}
-                      />
+              <>
+                {/* Botón flotante para mobile */}
+                <Affix position={{ bottom: rem(20), right: rem(20) }}>
+                  <Transition transition="slide-up" mounted={true}>
+                    {(transitionStyles) => (
+                      <ActionIcon
+                        size="xl"
+                        radius="xl"
+                        variant="filled"
+                        color="blue"
+                        style={transitionStyles}
+                        onClick={() => setExpenseFormOpened(true)}
+                        className="md:hidden"
+                      >
+                        <IconPlus size={24} />
+                      </ActionIcon>
                     )}
-                  </Stack>
-                </Grid.Col>
-                
-                <Grid.Col span={{ base: 12, md: 4 }}>
-                  <Stack gap="md">
-                    <ExpenseForm
-                      categories={categories}
-                      budgetMode={user?.budgetMode as 'simple' | 'categorized' | undefined}
-                      onSuccess={() => {
-                        void refetchWeeks();
-                        void refetchCategories();
-                      }}
-                    />
-                    
-                    <Card shadow="sm" padding="lg" radius="md" withBorder>
-                      <Text fw={500} mb="md">Resumen Semanal</Text>
-                      <Stack gap="xs">
-                        <Group justify="space-between">
-                          <Text size="sm">Presupuesto:</Text>
-                          <Text size="sm" fw={500}>
-                            {formatCurrency(currentWeek.weeklyBudget)}
-                          </Text>
-                        </Group>
-                        <Group justify="space-between">
-                          <Text size="sm">Gastado:</Text>
-                          <Text size="sm" fw={500}>
-                            {formatCurrency(currentWeek.spentAmount)}
-                          </Text>
-                        </Group>
-                        <Group justify="space-between">
-                          <Text size="sm">Restante:</Text>
-                          <Text 
-                            size="sm" 
-                            fw={500}
-                            c={currentWeek.weeklyBudget - currentWeek.spentAmount < 0 ? 'red' : 'green'}
-                          >
-                            {formatCurrency(currentWeek.weeklyBudget - currentWeek.spentAmount)}
-                          </Text>
-                        </Group>
-                      </Stack>
-                    </Card>
-                  </Stack>
-                </Grid.Col>
-              </Grid>
+                  </Transition>
+                </Affix>
+
+                <Grid>
+                  {/* Columna principal - Semana actual */}
+                  <Grid.Col span={{ base: 12, lg: 8 }}>
+                    <Stack gap="md">
+                      <WeekCard
+                        week={currentWeek}
+                        onCloseWeek={handleCloseWeek}
+                        isCurrentWeek={true}
+                        budgetMode={user?.budgetMode as 'simple' | 'categorized'}
+                        onExpenseUpdate={() => {
+                          void refetchWeeks();
+                          void refetchCategories();
+                        }}
+                      />
+                      
+                      {user.budgetMode === 'categorized' && (
+                        <CategoryProgress
+                          categories={currentWeek.categories}
+                          totalBudget={currentWeek.weeklyBudget}
+                          totalSpent={currentWeek.spentAmount}
+                        />
+                      )}
+                    </Stack>
+                  </Grid.Col>
+                  
+                  {/* Columna lateral - Formulario y resumen (solo desktop) */}
+                  <Grid.Col span={{ base: 12, lg: 4 }} className="hidden lg:block">
+                    <Stack gap="md">
+                      <ExpenseForm
+                        categories={categories}
+                        budgetMode={user?.budgetMode as 'simple' | 'categorized' | undefined}
+                        onSuccess={() => {
+                          void refetchWeeks();
+                          void refetchCategories();
+                        }}
+                      />
+                      
+                      <Card shadow="sm" padding="lg" radius="md" withBorder>
+                        <Text fw={500} mb="md">Resumen Semanal</Text>
+                        <Stack gap="xs">
+                          <Group justify="space-between">
+                            <Text size="sm">Presupuesto:</Text>
+                            <Text size="sm" fw={500}>
+                              {formatCurrency(currentWeek.weeklyBudget)}
+                            </Text>
+                          </Group>
+                          <Group justify="space-between">
+                            <Text size="sm">Gastado:</Text>
+                            <Text size="sm" fw={500}>
+                              {formatCurrency(currentWeek.spentAmount)}
+                            </Text>
+                          </Group>
+                          <Group justify="space-between">
+                            <Text size="sm">Restante:</Text>
+                            <Text 
+                              size="sm" 
+                              fw={500}
+                              c={currentWeek.weeklyBudget - currentWeek.spentAmount < 0 ? 'red' : 'green'}
+                            >
+                              {formatCurrency(currentWeek.weeklyBudget - currentWeek.spentAmount)}
+                            </Text>
+                          </Group>
+                        </Stack>
+                      </Card>
+                    </Stack>
+                  </Grid.Col>
+                </Grid>
+
+                {/* Modal del formulario de gastos para mobile */}
+                <ExpenseForm
+                  categories={categories}
+                  budgetMode={user?.budgetMode as 'simple' | 'categorized' | undefined}
+                  opened={expenseFormOpened}
+                  onClose={() => setExpenseFormOpened(false)}
+                  onSuccess={() => {
+                    void refetchWeeks();
+                    void refetchCategories();
+                    setExpenseFormOpened(false);
+                  }}
+                />
+              </>
             ) : (
               <Alert icon={<IconAlertCircle size={16} />} title="Semana no encontrada">
                 No se encontró la semana actual para {getMonthName(displayMonth)} {displayYear}.

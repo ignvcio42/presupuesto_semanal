@@ -17,18 +17,24 @@ import { useForm } from '@mantine/form';
 import { DateInput } from '@mantine/dates';
 import { IconPlus, IconAlertCircle } from '@tabler/icons-react';
 import { api } from '~/trpc/react';
-import { formatCurrency, createLocalDate, createDateFromString } from '~/lib/date-utils';
+import { formatCurrency, createLocalDate, createDateFromString, findWeekForDate } from '~/lib/date-utils';
 import type { CreateExpenseInput } from '~/lib/validations';
 
 interface ExpenseFormProps {
   categories: Array<{ id: string; name: string; allocation: number }>;
   budgetMode?: 'simple' | 'categorized';
   onSuccess?: () => void;
+  opened?: boolean;
+  onClose?: () => void;
 }
 
-export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess }: ExpenseFormProps) {
-  const [opened, setOpened] = useState(false);
+export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess, opened: externalOpened, onClose }: ExpenseFormProps) {
+  const [internalOpened, setInternalOpened] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Usar el estado externo si se proporciona, sino usar el interno
+  const opened = externalOpened !== undefined ? externalOpened : internalOpened;
+  const setOpened = onClose ? onClose : setInternalOpened;
 
   const form = useForm<CreateExpenseInput>({
     initialValues: {
@@ -58,12 +64,12 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess 
       // Limpiar categoryId cuando se cambia a modo simple
       form.setFieldValue('categoryId', '');
     }
-  }, [categories, form, budgetMode]);
+  }, [categories, budgetMode]); // Removido 'form' de las dependencias
 
   // Debug: mostrar el estado del formulario
-  console.log('Form values:', form.values);
-  console.log('Form errors:', form.errors);
-  console.log('Form isValid:', form.isValid());
+  // console.log('Form values:', form.values);
+  // console.log('Form errors:', form.errors);
+  // console.log('Form isValid:', form.isValid());
 
   const createExpense = api.budget.createExpense.useMutation({
     onSuccess: () => {
@@ -78,7 +84,35 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess 
 
   // Verificar si la fecha seleccionada es de una semana pasada
   const selectedDate = form.values.date instanceof Date ? form.values.date : new Date(form.values.date);
-  const isPastWeek = selectedDate < new Date();
+  const today = createLocalDate(); // Usar función que maneja zona horaria local
+  
+  // Corregir problema de zona horaria del DateInput
+  // El DateInput puede devolver fechas con offset de zona horaria, necesitamos corregirlo
+  // Si la fecha seleccionada tiene hora 21:00, significa que es el día anterior en UTC
+  // Necesitamos ajustar para obtener el día correcto
+  const selectedDateCorrected = new Date(
+    selectedDate.getFullYear(),
+    selectedDate.getMonth(),
+    selectedDate.getDate() + (selectedDate.getHours() >= 21 ? 1 : 0)
+  );
+  
+  // Normalizar ambas fechas para comparar solo el día
+  const selectedDateNormalized = new Date(selectedDateCorrected.getFullYear(), selectedDateCorrected.getMonth(), selectedDateCorrected.getDate());
+  const todayNormalized = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  
+  // Comparar directamente las fechas - si la fecha seleccionada es anterior al día actual, es semana pasada
+  const isPastWeek = selectedDateNormalized < todayNormalized;
+  
+  // // Debug logs
+  // console.log('Date validation debug:', {
+  //   selectedDate: selectedDate,
+  //   selectedDateCorrected: selectedDateCorrected,
+  //   selectedDateNormalized: selectedDateNormalized,
+  //   today: today,
+  //   todayNormalized: todayNormalized,
+  //   isPastWeek: isPastWeek,
+  //   comparison: selectedDateNormalized.getTime() < todayNormalized.getTime()
+  // });
 
   const handleSubmit = async (values: CreateExpenseInput) => {
     // Validación adicional antes de enviar
@@ -126,6 +160,94 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess 
     label: `${category.name} (${category.allocation}%)`,
   }));
 
+  // Si se proporciona opened y onClose, renderizar solo el modal
+  if (externalOpened !== undefined && onClose) {
+    return (
+      <Modal
+        opened={opened}
+        onClose={() => setOpened(false)}
+        title="Agregar Gasto"
+        size="md"
+      >
+        <form onSubmit={form.onSubmit(handleSubmit)}>
+          <Stack gap="md">
+            <NumberInput
+              label="Monto"
+              placeholder="Ingresa el monto"
+              leftSection="$"
+              min={1}
+              step={100}
+              thousandSeparator="."
+              decimalSeparator=","
+              {...form.getInputProps('amount')}
+            />
+
+            <TextInput
+              label="Descripción"
+              placeholder="¿En qué gastaste?"
+              {...form.getInputProps('description')}
+            />
+
+            <DateInput
+              label="Fecha"
+              placeholder="Selecciona la fecha"
+              value={form.values.date}
+              onChange={(value) => {
+                const dateValue = value ? new Date(value) : createLocalDate();
+                form.setFieldValue('date', dateValue);
+              }}
+            />
+
+            {budgetMode === 'categorized' && (
+              <Select
+                label="Categoría"
+                placeholder="Selecciona una categoría"
+                data={categoryOptions}
+                {...form.getInputProps('categoryId')}
+              />
+            )}
+
+            {isPastWeek && (
+              <Alert
+                icon={<IconAlertCircle size={16} />}
+                title="Gasto en semana pasada"
+                color="orange"
+              >
+                <Text size="sm">
+                  Estás agregando un gasto a una semana que ya pasó. Esto ajustará automáticamente 
+                  el rollover y afectará el presupuesto de la siguiente semana.
+                </Text>
+              </Alert>
+            )}
+
+            <Group justify="flex-end" mt="md">
+              <Button
+                variant="outline"
+                onClick={() => setOpened(false)}
+                disabled={isSubmitting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                loading={isSubmitting}
+                disabled={
+                  isSubmitting || 
+                  form.values.amount < 1 || 
+                  !form.values.description.trim() || 
+                  (budgetMode === 'categorized' && !form.values.categoryId)
+                }
+              >
+                Agregar Gasto
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+    );
+  }
+
+  // Renderizado normal con botón + modal
   return (
     <>
       <Button
@@ -217,7 +339,7 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess 
                 variant="outline"
                 color="orange"
                 onClick={() => {
-                  console.log('Testing form submit with values:', form.values);
+                  // console.log('Testing form submit with values:', form.values);
                   handleSubmit(form.values);
                 }}
                 disabled={isSubmitting}

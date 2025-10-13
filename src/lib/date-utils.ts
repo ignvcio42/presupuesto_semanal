@@ -31,35 +31,22 @@ export function getWeeksOfMonth(year: number, month: number, totalBudget: number
   
   let weekNumber = 1;
   
-  // Primer paso: contar cuántas semanas tiene el mes
-  let tempDate = currentDate;
-  let weekCount = 0;
-  while (tempDate <= monthEnd) {
-    weekCount++;
-    tempDate = addWeeks(tempDate, 1);
-    if (tempDate > monthEnd) {
-      break;
-    }
-  }
-  
-  // Calcular el presupuesto por semana basado en el número REAL de semanas del mes
-  const weeklyBudget = totalBudget / weekCount;
-  
-  // Segundo paso: crear las semanas con el presupuesto correcto
+  // Crear las semanas que intersectan con el mes
   while (currentDate <= monthEnd) {
     const weekStart = currentDate;
     const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
     
     // Solo incluir semanas que tengan al menos un día del mes
-    // Verificar que el inicio de la semana esté dentro del mes
-    if (weekStart <= monthEnd) {
+    // Verificar que la semana intersecte con el mes
+    if (weekStart <= monthEnd && weekEnd >= monthStart) {
+      const weekStartInMonth = weekStart < monthStart ? monthStart : weekStart;
       const weekEndInMonth = weekEnd > monthEnd ? monthEnd : weekEnd;
       
       weeks.push({
         weekNumber,
-        startDate: weekStart,
+        startDate: weekStartInMonth,
         endDate: weekEndInMonth,
-        weeklyBudget: weeklyBudget,
+        weeklyBudget: 0, // Se calculará después
       });
       weekNumber++;
     }
@@ -67,11 +54,19 @@ export function getWeeksOfMonth(year: number, month: number, totalBudget: number
     // Avanzar a la siguiente semana
     currentDate = addWeeks(currentDate, 1);
     
-    // Si la nueva fecha ya no tiene días en el mes, salir
+    // Si la nueva fecha ya no intersecta con el mes, salir
     if (currentDate > monthEnd) {
       break;
     }
   }
+  
+  // Calcular el presupuesto por semana basado en el número REAL de semanas del mes
+  const weeklyBudget = weeks.length > 0 ? totalBudget / weeks.length : 0;
+  
+  // Actualizar el presupuesto de cada semana
+  weeks.forEach(week => {
+    week.weeklyBudget = weeklyBudget;
+  });
   
   return {
     year,
@@ -87,18 +82,23 @@ export function getWeeksOfMonth(year: number, month: number, totalBudget: number
  */
 export function getCurrentWeek(year: number, month: number): number {
   const now = new Date();
-  const monthStart = startOfMonth(new Date(year, month - 1, 1));
-  const monthEnd = endOfMonth(monthStart);
+  const monthInfo = getWeeksOfMonth(year, month, 0);
   
-  let currentDate = startOfWeek(monthStart, { weekStartsOn: 1 });
-  let weekNumber = 1;
-  
-  while (currentDate <= monthEnd) {
-    if (isWithinInterval(now, { start: currentDate, end: endOfWeek(currentDate, { weekStartsOn: 1 }) })) {
-      return weekNumber;
+  // Buscar en qué semana está la fecha actual
+  for (const week of monthInfo.weeks) {
+    if (isWithinInterval(now, { start: week.startDate, end: week.endDate })) {
+      return week.weekNumber;
     }
-    currentDate = addWeeks(currentDate, 1);
-    weekNumber++;
+  }
+  
+  // Si no está en ninguna semana del mes, determinar la semana más cercana
+  const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+  
+  for (const week of monthInfo.weeks) {
+    const weekStart = startOfWeek(week.startDate, { weekStartsOn: 1 });
+    if (currentWeekStart.getTime() === weekStart.getTime()) {
+      return week.weekNumber;
+    }
   }
   
   return 1; // Fallback
@@ -197,6 +197,29 @@ export function createDateFromString(dateString: string): Date {
   const month = parts[1] ?? 1;
   const day = parts[2] ?? 1;
   return new Date(year, month - 1, day); // month es 0-indexed
+}
+
+/**
+ * Encuentra la semana correcta para una fecha específica
+ */
+export function findWeekForDate(date: Date, year: number, month: number): WeekInfo | null {
+  const monthInfo = getWeeksOfMonth(year, month, 0);
+  
+  // Buscar la semana que contiene esta fecha
+  for (const week of monthInfo.weeks) {
+    if (isWithinInterval(date, { start: week.startDate, end: week.endDate })) {
+      return week;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Valida si una fecha pertenece a una semana específica
+ */
+export function isDateInWeekRange(date: Date, weekStart: Date, weekEnd: Date): boolean {
+  return isWithinInterval(date, { start: weekStart, end: weekEnd });
 }
 
 /**

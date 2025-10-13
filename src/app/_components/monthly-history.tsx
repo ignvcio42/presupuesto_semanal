@@ -253,17 +253,37 @@ export function MonthlyHistory({ year, month }: MonthlyHistoryProps) {
       {/* Dashboard con Tabs */}
       <Tabs defaultValue="weekly-trends" mb="xl">
         <Tabs.List>
-          <Tabs.Tab value="weekly-trends" leftSection={<IconChartLine size={16} />}>
-            Tendencias Semanales
+          <Tabs.Tab 
+            value="weekly-trends" 
+            leftSection={<IconChartLine size={16} />}
+            className="text-xs sm:text-sm"
+          >
+            <span className="hidden sm:inline">Tendencias Semanales</span>
+            <span className="sm:hidden">Tendencias</span>
           </Tabs.Tab>
-          <Tabs.Tab value="categories" leftSection={<IconChartPie size={16} />}>
-            Análisis por Categorías
+          <Tabs.Tab 
+            value="categories" 
+            leftSection={<IconChartPie size={16} />}
+            className="text-xs sm:text-sm"
+          >
+            <span className="hidden sm:inline">Análisis por Categorías</span>
+            <span className="sm:hidden">Categorías</span>
           </Tabs.Tab>
-          <Tabs.Tab value="predictions" leftSection={<IconTarget size={16} />}>
-            Predicciones
+          <Tabs.Tab 
+            value="predictions" 
+            leftSection={<IconTarget size={16} />}
+            className="text-xs sm:text-sm"
+          >
+            <span className="hidden sm:inline">Predicciones</span>
+            <span className="sm:hidden">Predicciones</span>
           </Tabs.Tab>
-          <Tabs.Tab value="insights" leftSection={<IconInfoCircle size={16} />}>
-            Insights
+          <Tabs.Tab 
+            value="insights" 
+            leftSection={<IconInfoCircle size={16} />}
+            className="text-xs sm:text-sm"
+          >
+            <span className="hidden sm:inline">Insights</span>
+            <span className="sm:hidden">Insights</span>
           </Tabs.Tab>
         </Tabs.List>
 
