@@ -6,10 +6,12 @@ import { api } from '~/trpc/react';
 export function DebugInfo() {
   const { data: user } = api.budget.getUser.useQuery();
   const { data: categories } = api.budget.getCategories.useQuery();
-  const { data: weeks } = api.budget.getWeeks.useQuery({
+  const { data: weeksData } = api.budget.getWeeks.useQuery({
     year: new Date().getFullYear(),
     month: new Date().getMonth() + 1,
   });
+  
+  const weeks = Array.isArray(weeksData) ? weeksData : weeksData?.weeks ?? [];
 
   const createWeeks = api.budget.createWeeksForCurrentMonth.useMutation();
   const applyRollovers = api.budget.applyPendingRollovers.useMutation();
