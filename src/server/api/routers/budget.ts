@@ -1237,10 +1237,20 @@ export const budgetRouter = createTRPCRouter({
       const year = expenseDate.getFullYear();
       const month = expenseDate.getMonth() + 1;
 
+      console.log('[createExpense] Creating expense for date:', expenseDate, 'year:', year, 'month:', month);
+
+      // AUTO-CORRECCIÓN: Asegurar que todas las semanas del mes existan
+      await ensureWeek1Exists(ctx, userId, year, month, user.monthlyBudget || 0, user.budgetMode || 'simple');
+
       // Usar la nueva función para encontrar la semana correcta
       const week = findWeekForDate(expenseDate, year, month);
 
-      if (!week) throw new Error('No se pudo encontrar la semana para esta fecha');
+      console.log('[createExpense] Week found:', week ? `Week ${week.weekNumber}` : 'NULL');
+
+      if (!week) {
+        console.error('[createExpense] ERROR: Could not find week for date:', expenseDate);
+        throw new Error('No se pudo encontrar la semana para esta fecha');
+      }
 
       // Buscar o crear la semana en la base de datos
       let dbWeek = await ctx.db.week.findFirst({
