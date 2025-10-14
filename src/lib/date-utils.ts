@@ -229,12 +229,24 @@ export function createDateFromDateInput(date: Date): Date {
 export function findWeekForDate(date: Date, year: number, month: number): WeekInfo | null {
   const monthInfo = getWeeksOfMonth(year, month, 0);
   
+  // Normalizar la fecha de entrada al mediodía para evitar problemas de timezone
+  const normalizedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+  
   // Buscar la semana que contiene esta fecha
   for (const week of monthInfo.weeks) {
-    if (isWithinInterval(date, { start: week.startDate, end: week.endDate })) {
+    if (isWithinInterval(normalizedDate, { start: week.startDate, end: week.endDate })) {
       return week;
     }
   }
+  
+  // Logging para debugging
+  console.log('[findWeekForDate] Could not find week for date:', date);
+  console.log('[findWeekForDate] Normalized date:', normalizedDate);
+  console.log('[findWeekForDate] Available weeks:', monthInfo.weeks.map(w => ({
+    weekNumber: w.weekNumber,
+    start: w.startDate,
+    end: w.endDate,
+  })));
   
   return null;
 }
