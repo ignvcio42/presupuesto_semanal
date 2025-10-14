@@ -23,8 +23,9 @@ export interface MonthInfo {
  * Obtiene las semanas de un mes específico
  */
 export function getWeeksOfMonth(year: number, month: number, totalBudget: number): MonthInfo {
-  const monthStart = startOfMonth(new Date(year, month - 1, 1));
-  const monthEnd = endOfMonth(monthStart);
+  // Crear fechas al mediodía para evitar problemas de zona horaria
+  const monthStart = startOfMonth(new Date(year, month - 1, 1, 12, 0, 0));
+  const monthEnd = endOfMonth(new Date(year, month - 1, 1, 12, 0, 0));
   
   const weeks: WeekInfo[] = [];
   let currentDate = startOfWeek(monthStart, { weekStartsOn: 1 }); // Lunes como inicio de semana
@@ -42,10 +43,14 @@ export function getWeeksOfMonth(year: number, month: number, totalBudget: number
       const weekStartInMonth = weekStart < monthStart ? monthStart : weekStart;
       const weekEndInMonth = weekEnd > monthEnd ? monthEnd : weekEnd;
       
+      // Normalizar las fechas al mediodía para evitar problemas de zona horaria
+      const normalizedStart = new Date(weekStartInMonth.getFullYear(), weekStartInMonth.getMonth(), weekStartInMonth.getDate(), 12, 0, 0);
+      const normalizedEnd = new Date(weekEndInMonth.getFullYear(), weekEndInMonth.getMonth(), weekEndInMonth.getDate(), 12, 0, 0);
+      
       weeks.push({
         weekNumber,
-        startDate: weekStartInMonth,
-        endDate: weekEndInMonth,
+        startDate: normalizedStart,
+        endDate: normalizedEnd,
         weeklyBudget: 0, // Se calculará después
       });
       weekNumber++;
@@ -171,12 +176,12 @@ export function calculateRollover(allocated: number, spent: number): number {
  */
 export function createLocalDate(year?: number, month?: number, day?: number): Date {
   if (year !== undefined && month !== undefined && day !== undefined) {
-    // Crear fecha en zona horaria local
-    return new Date(year, month - 1, day); // month es 0-indexed en Date constructor
+    // Crear fecha al mediodía para evitar problemas de zona horaria
+    return new Date(year, month - 1, day, 12, 0, 0);
   }
-  // Para la fecha actual, crear en zona horaria local
+  // Para la fecha actual, crear en zona horaria local al mediodía
   const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
 }
 
 /**
@@ -184,8 +189,8 @@ export function createLocalDate(year?: number, month?: number, day?: number): Da
  */
 export function toLocalDate(date: Date | string): Date {
   const d = typeof date === 'string' ? new Date(date) : date;
-  // Crear nueva fecha usando los componentes locales para evitar problemas de UTC
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  // Crear nueva fecha al mediodía usando los componentes locales para evitar problemas de UTC
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0);
 }
 
 /**
@@ -196,7 +201,8 @@ export function createDateFromString(dateString: string): Date {
   const year = parts[0] ?? new Date().getFullYear();
   const month = parts[1] ?? 1;
   const day = parts[2] ?? 1;
-  return new Date(year, month - 1, day); // month es 0-indexed
+  // Crear fecha al mediodía para evitar problemas de zona horaria
+  return new Date(year, month - 1, day, 12, 0, 0);
 }
 
 /**

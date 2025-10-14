@@ -2426,6 +2426,71 @@ export const budgetRouter = createTRPCRouter({
       };
     }),
 
+  fixWeekDatesTimezone: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const userId = ctx.session.user.id;
+      const user = await ctx.db.user.findUnique({
+        where: { id: userId },
+      });
+      if (!user) throw new Error('Usuario no encontrado');
+
+      // Obtener todas las semanas del usuario
+      const weeks = await ctx.db.week.findMany({
+        where: { userId: userId },
+        include: {
+          monthlyHistory: true,
+        },
+      });
+
+      let updatedCount = 0;
+
+      // Agrupar semanas por mes
+      const weeksByMonth = new Map<string, typeof weeks>();
+      for (const week of weeks) {
+        const key = `${week.monthlyHistory.year}-${week.monthlyHistory.month}`;
+        if (!weeksByMonth.has(key)) {
+          weeksByMonth.set(key, []);
+        }
+        weeksByMonth.get(key)!.push(week);
+      }
+
+      // Recalcular y actualizar fechas para cada mes
+      for (const [key, monthWeeks] of weeksByMonth.entries()) {
+        const [year, month] = key.split('-').map(Number);
+        if (!year || !month) continue;
+
+        // Obtener las fechas correctas
+        const monthInfo = getWeeksOfMonth(year, month, user.monthlyBudget || 0);
+
+        // Actualizar cada semana con las fechas correctas
+        for (const week of monthWeeks) {
+          const correctWeek = monthInfo.weeks.find(w => w.weekNumber === week.weekNumber);
+          if (correctWeek) {
+            // Verificar si las fechas son diferentes
+            const startChanged = week.startDate.getTime() !== correctWeek.startDate.getTime();
+            const endChanged = week.endDate.getTime() !== correctWeek.endDate.getTime();
+
+            if (startChanged || endChanged) {
+              await ctx.db.week.update({
+                where: { id: week.id },
+                data: {
+                  startDate: correctWeek.startDate,
+                  endDate: correctWeek.endDate,
+                },
+              });
+              updatedCount++;
+            }
+          }
+        }
+      }
+
+      return {
+        success: true,
+        message: `Se actualizaron ${updatedCount} semanas con fechas corregidas`,
+        updatedCount,
+      };
+    }),
+
   // ============================================
   // CONSULTAS DE ADMINISTRADOR
   // ============================================
