@@ -309,7 +309,7 @@ export function WeekCard({ week, onCloseWeek, onReopenWeek, onViewDetails, isCur
               color="orange"
               onClick={handleReopenConfirm}
             >
-              Sí, reabrir semana
+              Sí, reabrir semana.
             </Button>
           </Group>
         </Stack>
