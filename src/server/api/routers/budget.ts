@@ -802,13 +802,30 @@ export const budgetRouter = createTRPCRouter({
     .query(async ({ ctx }) => {
       try {
         const userId = ctx.session.user.id;
-        console.log('[getUser] Looking for user:', userId);
+        const userEmail = ctx.session.user.email;
+        console.log('[getUser] Looking for user:', userId, 'email:', userEmail);
         
         let user = await ctx.db.user.findUnique({
           where: { id: userId }
         });
         
-        console.log('[getUser] User found:', user ? 'YES' : 'NO');
+        console.log('[getUser] User found by ID:', user ? 'YES' : 'NO');
+        
+        // Si no se encuentra por ID, buscar por email
+        if (!user && userEmail) {
+          console.log('[getUser] Trying to find by email:', userEmail);
+          user = await ctx.db.user.findUnique({
+            where: { email: userEmail }
+          });
+          
+          if (user) {
+            console.log('[getUser] User found by email with different ID:', user.id);
+            console.log('[getUser] Returning existing user instead of creating new one');
+            // Retornar el usuario existente sin modificar su ID
+            // Esto evita duplicados y mantiene la integridad de las foreign keys
+            return user;
+          }
+        }
         
         if (!user) {
           console.log('[getUser] Creating new user with defaults');
@@ -817,7 +834,7 @@ export const budgetRouter = createTRPCRouter({
             data: {
               id: userId,
               name: ctx.session.user.name || 'Usuario',
-              email: ctx.session.user.email || 'usuario@example.com',
+              email: userEmail || 'usuario@example.com',
               password: 'temp',
               role: 'user',
               monthlyBudget: 100000, // $100.000 CLP por defecto
