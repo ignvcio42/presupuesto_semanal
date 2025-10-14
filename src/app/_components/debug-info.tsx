@@ -128,6 +128,7 @@ export function DebugInfo() {
             }}
             loading={resetBudget.isPending}
             fullWidth
+            disabled={true}
           >
             Reiniciar Todo
           </Button>
