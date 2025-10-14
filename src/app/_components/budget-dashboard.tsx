@@ -84,12 +84,21 @@ export function BudgetDashboard() {
   const displayYear = selectedYear ?? currentYear;
   const displayMonth = selectedMonth ?? currentMonth;
 
-  // Queries
-  const { data: user, refetch: refetchUser } = api.budget.getUser.useQuery();
-  const { data: categories, refetch: refetchCategories } = api.budget.getCategories.useQuery();
-  const { data: weeksData, refetch: refetchWeeks } = api.budget.getWeeks.useQuery({
+  // Queries con límite de reintentos
+  const { data: user, refetch: refetchUser, error: userError } = api.budget.getUser.useQuery(undefined, {
+    retry: 2,
+    retryDelay: 1000,
+  });
+  const { data: categories, refetch: refetchCategories, error: categoriesError } = api.budget.getCategories.useQuery(undefined, {
+    retry: 2,
+    retryDelay: 1000,
+  });
+  const { data: weeksData, refetch: refetchWeeks, error: weeksError } = api.budget.getWeeks.useQuery({
     year: displayYear,
     month: displayMonth,
+  }, {
+    retry: 2,
+    retryDelay: 1000,
   });
   
   const weeks = Array.isArray(weeksData) ? weeksData : weeksData?.weeks ?? [];
@@ -290,6 +299,27 @@ export function BudgetDashboard() {
     setShowMonthSelector(false);
     setActiveTab('current');
   };
+
+  // Mostrar error si alguna query falla
+  if (userError || categoriesError || weeksError) {
+    return (
+      <Container size="xl" py="xl">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="text-red-600 text-5xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Error al cargar datos</h2>
+          <p className="text-gray-600 mb-4">
+            {userError?.message || categoriesError?.message || weeksError?.message || 'Error desconocido'}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Recargar página
+          </button>
+        </div>
+      </Container>
+    );
+  }
 
   if (!user || !categories || !weeks) {
     return (

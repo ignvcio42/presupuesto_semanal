@@ -13,11 +13,15 @@ export function BudgetApp() {
   const previousUserId = useRef<string | null>(null);
 
   // Verificar si el usuario ya tiene configuración
-  const { data: user, isLoading } = api.budget.getUser.useQuery();
+  const { data: user, isLoading, error } = api.budget.getUser.useQuery(undefined, {
+    retry: 2, // Solo reintentar 2 veces
+    retryDelay: 1000, // Esperar 1 segundo entre reintentos
+  });
 
   console.log('BudgetApp - Session:', session);
   console.log('BudgetApp - User:', user);
   console.log('BudgetApp - Loading:', isLoading);
+  console.log('BudgetApp - Error:', error);
   console.log('BudgetApp - isSetupComplete:', isSetupComplete);
 
   // Resetear estado cuando cambia el usuario
@@ -33,6 +37,27 @@ export function BudgetApp() {
   const handleSetupComplete = () => {
     setIsSetupComplete(true);
   };
+
+  // Mostrar error si falla la carga
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="text-red-600 text-5xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Error al cargar usuario</h2>
+          <p className="text-gray-600 mb-4">
+            {error.message || 'No se pudo cargar la información del usuario'}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Recargar página
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Mostrar loading mientras se carga la información del usuario
   if (isLoading) {

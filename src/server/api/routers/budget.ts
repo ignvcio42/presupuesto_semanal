@@ -800,24 +800,31 @@ export const budgetRouter = createTRPCRouter({
 
   getUser: protectedProcedure
     .query(async ({ ctx }) => {
-      const userId = ctx.session.user.id;
-      let user = await ctx.db.user.findUnique({
-        where: { id: userId }
-      });
-      
-      if (!user) {
-        // Crear usuario con valores predeterminados
-        user = await ctx.db.user.create({
-          data: {
-            id: userId,
-            name: ctx.session.user.name || 'Usuario',
-            email: ctx.session.user.email || 'usuario@example.com',
-            password: 'temp',
-            role: 'user',
-            monthlyBudget: 100000, // $100.000 CLP por defecto
-            budgetMode: 'categorized',
-          },
+      try {
+        const userId = ctx.session.user.id;
+        console.log('[getUser] Looking for user:', userId);
+        
+        let user = await ctx.db.user.findUnique({
+          where: { id: userId }
         });
+        
+        console.log('[getUser] User found:', user ? 'YES' : 'NO');
+        
+        if (!user) {
+          console.log('[getUser] Creating new user with defaults');
+          // Crear usuario con valores predeterminados
+          user = await ctx.db.user.create({
+            data: {
+              id: userId,
+              name: ctx.session.user.name || 'Usuario',
+              email: ctx.session.user.email || 'usuario@example.com',
+              password: 'temp',
+              role: 'user',
+              monthlyBudget: 100000, // $100.000 CLP por defecto
+              budgetMode: 'categorized',
+            },
+          });
+          console.log('[getUser] New user created:', user.id);
 
         // Crear categorías predeterminadas
         const defaultCategories = getDefaultCategories();
@@ -859,8 +866,13 @@ export const budgetRouter = createTRPCRouter({
         }
       }
 
+      console.log('[getUser] Returning user:', user.id);
       return user;
-    }),
+    } catch (error) {
+      console.error('[getUser] ERROR:', error);
+      throw error;
+    }
+  }),
 
   updateUser: protectedProcedure
     .input(updateUserSchema)
