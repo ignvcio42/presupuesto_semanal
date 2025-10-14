@@ -1505,19 +1505,7 @@ export const budgetRouter = createTRPCRouter({
         },
       });
 
-      // AUTO-CORRECCIÓN: Recalcular todos los rollovers en cascada
-      if (monthlyHistory && monthlyHistory.weeks.length > 0) {
-        const baseWeeklyBudget = (user.monthlyBudget || 0) / monthlyHistory.weeks.length;
-        await recalculateAllRollovers(
-          ctx,
-          monthlyHistory.id,
-          userId,
-          monthlyHistory.budgetMode ?? 'simple',
-          baseWeeklyBudget
-        );
-      }
-
-      // Obtener las semanas de la base de datos (ahora con rollovers recalculados)
+      // Obtener las semanas de la base de datos
       const weeks = await ctx.db.week.findMany({
         where: {
           userId: userId,
