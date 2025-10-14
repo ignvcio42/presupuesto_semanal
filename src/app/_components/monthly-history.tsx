@@ -158,6 +158,8 @@ export function MonthlyHistory({ year, month }: MonthlyHistoryProps) {
     return iconMap[color as keyof typeof iconMap] || <IconTarget size={16} />;
   };
 
+  const spentInOtherMonth = totalBudget - totalSpent;
+
   return (
     <Container size="xl" py="xl">
       <Group justify="space-between" mb="xl">
@@ -209,6 +211,23 @@ export function MonthlyHistory({ year, month }: MonthlyHistoryProps) {
             </div>
             <ThemeIcon color={totalSpent > totalBudget ? 'red' : 'green'} size={38} radius="md">
               <IconChartBar size={20} />
+            </ThemeIcon>
+          </Group>
+        </Card>
+
+        <Card shadow="sm" padding="lg" radius="md" withBorder>
+          <Group justify="space-between">
+            <div>
+              <Text size="sm" c="dimmed">{totalRollover >= 0 ? 'Sobrante del Mes' : 'Déficit del Mes'}</Text>
+              <Text fw={700} size="xl">
+                {formatCurrency(spentInOtherMonth)}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {spentInOtherMonth >= 0 ? 'Sobrante del Mes' : 'Déficit del Mes'}
+              </Text>
+            </div>
+            <ThemeIcon color={totalRollover >= 0 ? 'green' : 'red'} size={38} radius="md">
+              {spentInOtherMonth >= 0 ? <IconTrendingUp size={20} /> : <IconTrendingDown size={20} />}
             </ThemeIcon>
           </Group>
         </Card>
