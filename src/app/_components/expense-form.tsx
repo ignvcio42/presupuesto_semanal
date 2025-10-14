@@ -17,7 +17,7 @@ import { useForm } from '@mantine/form';
 import { DateInput } from '@mantine/dates';
 import { IconPlus, IconAlertCircle } from '@tabler/icons-react';
 import { api } from '~/trpc/react';
-import { formatCurrency, createLocalDate, createDateFromString, findWeekForDate } from '~/lib/date-utils';
+import { formatCurrency, createLocalDate, createDateFromString, createDateFromDateInput, findWeekForDate } from '~/lib/date-utils';
 import type { CreateExpenseInput } from '~/lib/validations';
 
 interface ExpenseFormProps {
@@ -86,33 +86,47 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess,
   const selectedDate = form.values.date instanceof Date ? form.values.date : new Date(form.values.date);
   const today = createLocalDate(); // Usar función que maneja zona horaria local
   
-  // Corregir problema de zona horaria del DateInput
-  // El DateInput puede devolver fechas con offset de zona horaria, necesitamos corregirlo
-  // Si la fecha seleccionada tiene hora 21:00, significa que es el día anterior en UTC
-  // Necesitamos ajustar para obtener el día correcto
-  const selectedDateCorrected = new Date(
-    selectedDate.getFullYear(),
-    selectedDate.getMonth(),
-    selectedDate.getDate() + (selectedDate.getHours() >= 21 ? 1 : 0)
-  );
+  // Normalizar la fecha seleccionada para evitar problemas de zona horaria
+  // El DateInput puede devolver fechas como "Oct 12 21:00" cuando seleccionas Oct 13
+  // debido a problemas de UTC. Necesitamos corregir esto.
+  const selectedDateNormalized = createDateFromDateInput(selectedDate);
   
-  // Normalizar ambas fechas para comparar solo el día
-  const selectedDateNormalized = new Date(selectedDateCorrected.getFullYear(), selectedDateCorrected.getMonth(), selectedDateCorrected.getDate());
-  const todayNormalized = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  // Obtener el año y mes de ambas fechas
+  const selectedYear = selectedDateNormalized.getFullYear();
+  const selectedMonth = selectedDateNormalized.getMonth() + 1;
+  const todayYear = today.getFullYear();
+  const todayMonth = today.getMonth() + 1;
   
-  // Comparar directamente las fechas - si la fecha seleccionada es anterior al día actual, es semana pasada
-  const isPastWeek = selectedDateNormalized < todayNormalized;
+  // Encontrar la semana de la fecha seleccionada y la semana actual
+  const selectedWeek = findWeekForDate(selectedDateNormalized, selectedYear, selectedMonth);
+  const currentWeek = findWeekForDate(today, todayYear, todayMonth);
   
-  // // Debug logs
-  // console.log('Date validation debug:', {
-  //   selectedDate: selectedDate,
-  //   selectedDateCorrected: selectedDateCorrected,
-  //   selectedDateNormalized: selectedDateNormalized,
-  //   today: today,
-  //   todayNormalized: todayNormalized,
-  //   isPastWeek: isPastWeek,
-  //   comparison: selectedDateNormalized.getTime() < todayNormalized.getTime()
-  // });
+  // Determinar si es una semana pasada comparando las semanas, no los días
+  let isPastWeek = false;
+  if (selectedWeek && currentWeek) {
+    // Si están en el mismo mes y año, comparar el número de semana
+    if (selectedYear === todayYear && selectedMonth === todayMonth) {
+      isPastWeek = selectedWeek.weekNumber < currentWeek.weekNumber;
+    } 
+    // Si la fecha seleccionada es de un mes/año anterior, es semana pasada
+    else if (selectedYear < todayYear || (selectedYear === todayYear && selectedMonth < todayMonth)) {
+      isPastWeek = true;
+    }
+  }
+  
+  // Debug logs
+  console.log('Date validation debug:', {
+    selectedDate: selectedDate,
+    selectedDateNormalized: selectedDateNormalized,
+    today: today,
+    selectedYear: selectedYear,
+    selectedMonth: selectedMonth,
+    todayYear: todayYear,
+    todayMonth: todayMonth,
+    selectedWeek: selectedWeek,
+    currentWeek: currentWeek,
+    isPastWeek: isPastWeek,
+  });
 
   const handleSubmit = async (values: CreateExpenseInput) => {
     // Validación adicional antes de enviar
@@ -130,7 +144,8 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess,
     // Convertir la fecha a objeto Date si es string y asegurar zona horaria local
     let finalDate: Date;
     if (values.date instanceof Date) {
-      finalDate = values.date;
+      // Normalizar la fecha usando createDateFromDateInput para corregir problemas de UTC
+      finalDate = createDateFromDateInput(values.date);
     } else if (typeof values.date === 'string') {
       // Si es un string, crear fecha desde el string
       finalDate = createDateFromString(values.date);
@@ -193,7 +208,9 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess,
               placeholder="Selecciona la fecha"
               value={form.values.date}
               onChange={(value) => {
-                const dateValue = value ? new Date(value) : createLocalDate();
+                console.log('DateInput onChange - raw value:', value);
+                const dateValue = value ? createDateFromDateInput(new Date(value)) : createLocalDate();
+                console.log('DateInput onChange - normalized dateValue:', dateValue);
                 form.setFieldValue('date', dateValue);
               }}
             />
@@ -287,7 +304,13 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess,
               label="Fecha"
               placeholder="Selecciona la fecha"
               valueFormat="DD/MM/YYYY"
-              {...form.getInputProps('date')}
+              value={form.values.date}
+              onChange={(value) => {
+                console.log('DateInput onChange - raw value:', value);
+                const dateValue = value ? createDateFromDateInput(new Date(value)) : createLocalDate();
+                console.log('DateInput onChange - normalized dateValue:', dateValue);
+                form.setFieldValue('date', dateValue);
+              }}
             />
 
             {budgetMode === 'categorized' && (

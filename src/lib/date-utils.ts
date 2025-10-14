@@ -206,6 +206,24 @@ export function createDateFromString(dateString: string): Date {
 }
 
 /**
+ * Crea una fecha desde un Date object del DateInput, normalizando la zona horaria
+ */
+export function createDateFromDateInput(date: Date): Date {
+  // El DateInput puede devolver fechas en UTC que se interpretan mal en zona horaria local
+  // Por ejemplo: seleccionar Oct 13 puede devolver "Oct 12 21:00" en Chile (UTC-3)
+  // Si la hora es >= 21 (9 PM), probablemente es el día siguiente en UTC
+  const hour = date.getHours();
+  const dayOffset = hour >= 21 ? 1 : 0;
+  
+  return new Date(
+    date.getFullYear(), 
+    date.getMonth(), 
+    date.getDate() + dayOffset, 
+    12, 0, 0
+  );
+}
+
+/**
  * Encuentra la semana correcta para una fecha específica
  */
 export function findWeekForDate(date: Date, year: number, month: number): WeekInfo | null {
