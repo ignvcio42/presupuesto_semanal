@@ -153,6 +153,180 @@ async function applyRolloverToNextOpenWeek(
 }
 
 /**
+ * Recalcula TODOS los rollovers del mes en cascada desde la primera semana.
+ * IMPORTANTE: Solo el rollover de la ÚLTIMA semana cerrada se aplica a la primera semana abierta.
+ */
+async function recalculateAllRollovers(
+  ctx: Context,
+  monthlyHistoryId: string,
+  userId: string,
+  budgetMode: string,
+  baseWeeklyBudget: number
+) {
+  // Obtener todas las semanas del mes en orden
+  const weeks = await ctx.db.week.findMany({
+    where: {
+      monthlyHistoryId: monthlyHistoryId,
+      userId: userId,
+    },
+    orderBy: { weekNumber: 'asc' },
+  });
+
+  // Encontrar la última semana cerrada
+  let lastClosedWeek = null;
+  let lastClosedWeekRollover = 0;
+
+  // Primero, recalcular los rollovers de todas las semanas cerradas
+  for (const week of weeks) {
+    if (week.isClosed) {
+      // Para semanas cerradas, recalcular su presupuesto y rollover correctamente
+      // Si es la primera semana cerrada, usa el presupuesto base
+      // Si no, necesitamos aplicar el rollover de la semana anterior cerrada
+      
+      // Encontrar todas las semanas cerradas anteriores a esta
+      const previousClosedWeeks = weeks.filter(
+        w => w.isClosed && w.weekNumber < week.weekNumber
+      );
+      
+      // Calcular el presupuesto correcto para esta semana cerrada
+      let correctWeeklyBudget = baseWeeklyBudget;
+      
+      if (previousClosedWeeks.length > 0) {
+        // Obtener la última semana cerrada anterior
+        const prevClosedWeek = previousClosedWeeks[previousClosedWeeks.length - 1];
+        if (prevClosedWeek) {
+          const prevRollover = calculateRollover(prevClosedWeek.weeklyBudget, prevClosedWeek.spentAmount);
+          correctWeeklyBudget = baseWeeklyBudget + prevRollover;
+        }
+      }
+      
+      // Actualizar el presupuesto de la semana cerrada si es necesario
+      if (Math.abs(week.weeklyBudget - correctWeeklyBudget) > 0.01) {
+        await ctx.db.week.update({
+          where: { id: week.id },
+          data: {
+            weeklyBudget: correctWeeklyBudget,
+          },
+        });
+      }
+      
+      // Calcular el rollover de esta semana
+      const rollover = calculateRollover(correctWeeklyBudget, week.spentAmount);
+      
+      // Actualizar el rollover de la semana cerrada
+      await ctx.db.week.update({
+        where: { id: week.id },
+        data: {
+          rolloverAmount: rollover,
+        },
+      });
+
+      // Esta es la última semana cerrada hasta ahora
+      lastClosedWeek = week;
+      lastClosedWeekRollover = rollover;
+    }
+  }
+
+  // Ahora actualizar las semanas abiertas
+  let firstOpenWeek = true;
+  for (const week of weeks) {
+    if (!week.isClosed) {
+      let newWeeklyBudget;
+      
+      if (firstOpenWeek && lastClosedWeek) {
+        // Solo la PRIMERA semana abierta recibe el rollover de la ÚLTIMA semana cerrada
+        newWeeklyBudget = baseWeeklyBudget + lastClosedWeekRollover;
+        firstOpenWeek = false;
+      } else {
+        // Todas las demás semanas abiertas usan el presupuesto base
+        newWeeklyBudget = baseWeeklyBudget;
+      }
+      
+      await ctx.db.week.update({
+        where: { id: week.id },
+        data: {
+          weeklyBudget: newWeeklyBudget,
+          rolloverAmount: 0, // Las semanas abiertas no tienen rollover propio
+        },
+      });
+
+      // Actualizar las asignaciones por categoría según el modo
+      if (budgetMode === 'categorized') {
+        const categories = await ctx.db.category.findMany({
+          where: { userId: userId },
+        });
+
+        // Obtener las asignaciones actuales para mantener el spentAmount
+        const existingAllocations = await ctx.db.weekCategory.findMany({
+          where: { weekId: week.id },
+        });
+
+        // Actualizar cada asignación
+        for (const category of categories) {
+          const existingAllocation = existingAllocations.find(
+            (a) => a.categoryId === category.id
+          );
+
+          if (existingAllocation) {
+            await ctx.db.weekCategory.update({
+              where: { id: existingAllocation.id },
+              data: {
+                allocatedAmount: (newWeeklyBudget * category.allocation) / 100,
+                // Mantener spentAmount sin cambios
+              },
+            });
+          } else {
+            // Crear si no existe
+            await ctx.db.weekCategory.create({
+              data: {
+                weekId: week.id,
+                categoryId: category.id,
+                allocatedAmount: (newWeeklyBudget * category.allocation) / 100,
+                spentAmount: 0,
+              },
+            });
+          }
+        }
+      } else {
+        // Si el modo es simple, eliminar todas las asignaciones de categorías
+        await ctx.db.weekCategory.deleteMany({
+          where: { weekId: week.id },
+        });
+      }
+    }
+  }
+
+  // Recalcular el total rollover del mes (suma de todos los rollovers de semanas cerradas)
+  const totalRollover = weeks
+    .filter((w) => w.isClosed)
+    .reduce((sum, w) => {
+      if (w.id === lastClosedWeek?.id) {
+        return sum + lastClosedWeekRollover;
+      }
+      // Para otras semanas cerradas, recalcular su rollover
+      const prevClosedWeeks = weeks.filter(
+        prev => prev.isClosed && prev.weekNumber < w.weekNumber
+      );
+      let correctBudget = baseWeeklyBudget;
+      if (prevClosedWeeks.length > 0) {
+        const prevWeek = prevClosedWeeks[prevClosedWeeks.length - 1];
+        if (prevWeek) {
+          const prevRollover = calculateRollover(prevWeek.weeklyBudget, prevWeek.spentAmount);
+          correctBudget = baseWeeklyBudget + prevRollover;
+        }
+      }
+      return sum + calculateRollover(correctBudget, w.spentAmount);
+    }, 0);
+
+  await ctx.db.monthlyHistory.update({
+    where: { id: monthlyHistoryId },
+    data: {
+      totalRollover: totalRollover,
+    },
+  });
+}
+
+/**
  * Recalcula el rollover de una semana cerrada y ajusta la próxima semana abierta
  * si el rollover cambió (por modificación o eliminación de gastos)
  */
@@ -168,33 +342,36 @@ async function recalculateAndApplyRollover(
 
   if (!week || !week.isClosed) return;
 
-  // Calcular el nuevo rollover
-  const newRollover = calculateRollover(week.weeklyBudget, week.spentAmount);
-  const oldRollover = week.rolloverAmount;
-  const rolloverDifference = newRollover - oldRollover;
+  // Obtener el usuario para saber el presupuesto base
+  const user = await ctx.db.user.findUnique({
+    where: { id: userId },
+  });
 
-  // Actualizar el rollover de la semana actual
-  await ctx.db.week.update({
-    where: { id: weekId },
-    data: {
-      rolloverAmount: newRollover,
+  if (!user) return;
+
+  // Obtener el historial mensual para saber cuántas semanas tiene el mes
+  const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
+    where: { id: week.monthlyHistoryId },
+    include: {
+      weeks: {
+        orderBy: { weekNumber: 'asc' },
+      },
     },
   });
 
-  // Si hay diferencia, ajustar la próxima semana abierta
-  if (rolloverDifference !== 0) {
-    await applyRolloverToNextOpenWeek(ctx, weekId, rolloverDifference, userId, budgetMode);
+  if (!monthlyHistory) return;
 
-    // Actualizar el historial mensual
-    await ctx.db.monthlyHistory.update({
-      where: { id: week.monthlyHistoryId },
-      data: {
-        totalRollover: {
-          increment: rolloverDifference,
-        },
-      },
-    });
-  }
+  // Calcular el presupuesto semanal base
+  const baseWeeklyBudget = (user.monthlyBudget || 0) / monthlyHistory.weeks.length;
+
+  // Recalcular TODOS los rollovers del mes en cascada
+  await recalculateAllRollovers(
+    ctx,
+    monthlyHistory.id,
+    userId,
+    budgetMode,
+    baseWeeklyBudget
+  );
 }
 
 /**
@@ -245,7 +422,7 @@ async function createWeekWithCategories(
 /**
  * Asegura que la semana 1 existe y todas las semanas del mes están creadas
  */
-async function ensureWeek1Exists(ctx: Context, userId: string, year: number, month: number, monthlyBudget: number) {
+async function ensureWeek1Exists(ctx: Context, userId: string, year: number, month: number, monthlyBudget: number, userBudgetMode: string) {
   const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
     where: {
       userId_year_month: {
@@ -257,7 +434,7 @@ async function ensureWeek1Exists(ctx: Context, userId: string, year: number, mon
   });
 
   if (!monthlyHistory) {
-    // Si no existe historial mensual, crear todo el mes
+    // Si no existe historial mensual, crear todo el mes usando el modo del usuario
     const monthInfo = getWeeksOfMonth(year, month, monthlyBudget);
     
     const newMonthlyHistory = await ctx.db.monthlyHistory.create({
@@ -268,7 +445,7 @@ async function ensureWeek1Exists(ctx: Context, userId: string, year: number, mon
         totalBudget: monthlyBudget,
         totalSpent: 0,
         totalRollover: 0,
-        budgetMode: 'simple', // Por defecto en modo simple
+        budgetMode: userBudgetMode, // Usar el modo del usuario
       },
     });
 
@@ -279,7 +456,7 @@ async function ensureWeek1Exists(ctx: Context, userId: string, year: number, mon
         userId,
         week,
         newMonthlyHistory.id,
-        'simple', // Por defecto en modo simple
+        userBudgetMode, // Usar el modo del usuario
         0
       );
     }
@@ -422,7 +599,7 @@ async function recalculateSpentAmounts(ctx: Context, userId: string, year: numbe
 /**
  * Valida y corrige las fechas de las semanas existentes automáticamente
  */
-async function validateAndFixExistingWeeks(ctx: Context, userId: string, year: number, month: number, monthlyBudget: number) {
+async function validateAndFixExistingWeeks(ctx: Context, userId: string, year: number, month: number, monthlyBudget: number, userBudgetMode: string) {
   // Obtener las semanas actuales de la base de datos
   const existingWeeks = await ctx.db.week.findMany({
     where: {
@@ -496,7 +673,7 @@ async function validateAndFixExistingWeeks(ctx: Context, userId: string, year: n
 }
 
 /**
- * Auto-cierra semanas vencidas y aplica sus rollovers
+ * Auto-cierra semanas vencidas y recalcula todos los rollovers en cascada
  */
 async function autoCloseExpiredWeeks(ctx: Context, userId: string, year: number, month: number) {
   const currentDate = new Date();
@@ -518,7 +695,35 @@ async function autoCloseExpiredWeeks(ctx: Context, userId: string, year: number,
     orderBy: { weekNumber: 'asc' },
   });
 
-  // Procesar semanas en orden para aplicar rollovers correctamente
+  if (openWeeks.length === 0) return; // No hay semanas para cerrar
+
+  // Obtener el historial mensual y el usuario
+  const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
+    where: {
+      userId_year_month: {
+        userId: userId,
+        year: year,
+        month: month,
+      },
+    },
+    include: {
+      weeks: {
+        orderBy: { weekNumber: 'asc' },
+      },
+    },
+  });
+
+  if (!monthlyHistory) return;
+
+  const user = await ctx.db.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) return;
+
+  const budgetMode = monthlyHistory.budgetMode ?? 'simple';
+
+  // Cerrar todas las semanas vencidas
   for (const week of openWeeks) {
     const rollover = calculateRollover(week.weeklyBudget, week.spentAmount);
     
@@ -538,34 +743,21 @@ async function autoCloseExpiredWeeks(ctx: Context, userId: string, year: number,
         totalSpent: {
           increment: week.spentAmount,
         },
-        totalRollover: {
-          increment: rollover,
-        },
       },
     });
   }
 
-  // Obtener el budgetMode del historial mensual
-  const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
-    where: {
-      userId_year_month: {
-        userId: userId,
-        year: year,
-        month: month,
-      },
-    },
-  });
+  // Calcular el presupuesto semanal base
+  const baseWeeklyBudget = (user.monthlyBudget || 0) / monthlyHistory.weeks.length;
 
-  const budgetMode = monthlyHistory?.budgetMode ?? 'simple';
-
-  // Aplicar todos los rollovers después de cerrar todas las semanas
-  // Esto asegura que los rollovers se apliquen en orden correcto
-  for (const week of openWeeks) {
-    const rollover = calculateRollover(week.weeklyBudget, week.spentAmount);
-    if (rollover !== 0) {
-      await applyRolloverToNextOpenWeek(ctx, week.id, rollover, userId, budgetMode);
-    }
-  }
+  // Recalcular TODOS los rollovers del mes en cascada
+  await recalculateAllRollovers(
+    ctx,
+    monthlyHistory.id,
+    userId,
+    budgetMode,
+    baseWeeklyBudget
+  );
 }
 
 // ============================================
@@ -651,7 +843,7 @@ export const budgetRouter = createTRPCRouter({
             totalBudget: 100000,
             totalSpent: 0,
             totalRollover: 0,
-            budgetMode: 'simple',
+            budgetMode: 'categorized', // Usar el mismo modo que el usuario
           },
         });
 
@@ -661,7 +853,7 @@ export const budgetRouter = createTRPCRouter({
             userId,
             week,
             monthlyHistory.id,
-            'simple',
+            'categorized', // Usar el mismo modo que el usuario
             0
           );
         }
@@ -803,6 +995,7 @@ export const budgetRouter = createTRPCRouter({
           // Crear historial y semanas si no existen
           const budgetToUse = input.monthlyBudget || user.monthlyBudget || 0;
           const monthInfo = getWeeksOfMonth(year, month, budgetToUse);
+          const budgetModeToUse = input.budgetMode || user.budgetMode || 'simple';
           
           const newMonthlyHistory = await ctx.db.monthlyHistory.create({
             data: {
@@ -812,7 +1005,7 @@ export const budgetRouter = createTRPCRouter({
               totalBudget: budgetToUse,
               totalSpent: 0,
               totalRollover: 0,
-              budgetMode: 'simple',
+              budgetMode: budgetModeToUse,
             },
           });
 
@@ -822,7 +1015,7 @@ export const budgetRouter = createTRPCRouter({
               userId,
               week,
               newMonthlyHistory.id,
-              'simple',
+              budgetModeToUse,
               0
             );
           }
@@ -1046,6 +1239,9 @@ export const budgetRouter = createTRPCRouter({
         });
 
         if (!monthlyHistory) {
+          // Usar explícitamente el budgetMode del usuario
+          const userBudgetMode = user.budgetMode || 'simple';
+          
           monthlyHistory = await ctx.db.monthlyHistory.create({
             data: {
               userId: userId,
@@ -1054,9 +1250,20 @@ export const budgetRouter = createTRPCRouter({
               totalBudget: user.monthlyBudget || 0,
               totalSpent: 0,
               totalRollover: 0,
-              budgetMode: 'simple',
+              budgetMode: userBudgetMode,
             },
           });
+        } else {
+          // Si el historial mensual ya existe pero tiene un modo diferente al del usuario,
+          // actualizarlo para que coincida con el modo del usuario
+          const userBudgetMode = user.budgetMode || 'simple';
+          if (monthlyHistory.budgetMode !== userBudgetMode) {
+            await ctx.db.monthlyHistory.update({
+              where: { id: monthlyHistory.id },
+              data: { budgetMode: userBudgetMode },
+            });
+            monthlyHistory.budgetMode = userBudgetMode;
+          }
         }
 
         dbWeek = await createWeekWithCategories(
@@ -1271,10 +1478,10 @@ export const budgetRouter = createTRPCRouter({
       if (!user) return [];
 
       // AUTO-CORRECCIÓN: Verificar y recuperar todas las semanas del mes
-      await ensureWeek1Exists(ctx, userId, input.year, input.month, user.monthlyBudget || 0);
+      await ensureWeek1Exists(ctx, userId, input.year, input.month, user.monthlyBudget || 0, user.budgetMode || 'simple');
 
   // AUTO-CORRECCIÓN: Validar y corregir fechas de semanas existentes
-  await validateAndFixExistingWeeks(ctx, userId, input.year, input.month, user.monthlyBudget || 0);
+  await validateAndFixExistingWeeks(ctx, userId, input.year, input.month, user.monthlyBudget || 0, user.budgetMode || 'simple');
 
   // AUTO-CORRECCIÓN: Recalcular montos gastados basándose en gastos reales
   await recalculateSpentAmounts(ctx, userId, input.year, input.month);
@@ -1291,9 +1498,26 @@ export const budgetRouter = createTRPCRouter({
             month: input.month,
           },
         },
+        include: {
+          weeks: {
+            orderBy: { weekNumber: 'asc' },
+          },
+        },
       });
 
-      // Obtener las semanas de la base de datos
+      // AUTO-CORRECCIÓN: Recalcular todos los rollovers en cascada
+      if (monthlyHistory && monthlyHistory.weeks.length > 0) {
+        const baseWeeklyBudget = (user.monthlyBudget || 0) / monthlyHistory.weeks.length;
+        await recalculateAllRollovers(
+          ctx,
+          monthlyHistory.id,
+          userId,
+          monthlyHistory.budgetMode ?? 'simple',
+          baseWeeklyBudget
+        );
+      }
+
+      // Obtener las semanas de la base de datos (ahora con rollovers recalculados)
       const weeks = await ctx.db.week.findMany({
         where: {
           userId: userId,
@@ -1341,7 +1565,15 @@ export const budgetRouter = createTRPCRouter({
       const userId = ctx.session.user.id;
       const week = await ctx.db.week.findUnique({
         where: { id: input.weekId },
-        include: { monthlyHistory: true },
+        include: { 
+          monthlyHistory: {
+            include: {
+              weeks: {
+                orderBy: { weekNumber: 'asc' },
+              },
+            },
+          },
+        },
       });
 
       if (!week) throw new Error('Semana no encontrada');
@@ -1358,13 +1590,12 @@ export const budgetRouter = createTRPCRouter({
         },
       });
 
-      // Obtener usuario para saber el modo
-        const user = await ctx.db.user.findUnique({
+      // Obtener usuario para saber el modo y presupuesto
+      const user = await ctx.db.user.findUnique({
         where: { id: userId },
       });
 
-      // Aplicar rollover a la próxima semana ABIERTA
-      await applyRolloverToNextOpenWeek(ctx, input.weekId, rollover, userId, user?.budgetMode || 'categorized');
+      if (!user) throw new Error('Usuario no encontrado');
 
       // Actualizar el historial mensual
       await ctx.db.monthlyHistory.update({
@@ -1373,13 +1604,84 @@ export const budgetRouter = createTRPCRouter({
           totalSpent: {
             increment: week.spentAmount,
           },
-          totalRollover: {
-            increment: rollover,
+        },
+      });
+
+      // Calcular el presupuesto semanal base
+      const baseWeeklyBudget = (user.monthlyBudget || 0) / week.monthlyHistory.weeks.length;
+
+      // Recalcular TODOS los rollovers del mes en cascada
+      await recalculateAllRollovers(
+        ctx,
+        week.monthlyHistoryId,
+        userId,
+        user.budgetMode || 'categorized',
+        baseWeeklyBudget
+      );
+
+      return { success: true, rollover };
+    }),
+
+  reopenWeek: protectedProcedure
+    .input(z.object({ weekId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+      const week = await ctx.db.week.findUnique({
+        where: { id: input.weekId },
+        include: { 
+          monthlyHistory: {
+            include: {
+              weeks: {
+                orderBy: { weekNumber: 'asc' },
+              },
+            },
           },
         },
       });
 
-      return { success: true, rollover };
+      if (!week) throw new Error('Semana no encontrada');
+      if (week.userId !== userId) throw new Error('Semana no pertenece al usuario');
+      if (!week.isClosed) throw new Error('La semana ya está abierta');
+
+      // Marcar la semana como abierta y resetear el rollover
+      await ctx.db.week.update({
+        where: { id: input.weekId },
+        data: {
+          isClosed: false,
+          rolloverAmount: 0,
+        },
+      });
+
+      // Obtener usuario para saber el modo y presupuesto
+      const user = await ctx.db.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!user) throw new Error('Usuario no encontrado');
+
+      // Actualizar el historial mensual (restar el gasto que se había sumado al cerrar)
+      await ctx.db.monthlyHistory.update({
+        where: { id: week.monthlyHistoryId },
+        data: {
+          totalSpent: {
+            decrement: week.spentAmount,
+          },
+        },
+      });
+
+      // Calcular el presupuesto semanal base
+      const baseWeeklyBudget = (user.monthlyBudget || 0) / week.monthlyHistory.weeks.length;
+
+      // Recalcular TODOS los rollovers del mes en cascada
+      await recalculateAllRollovers(
+        ctx,
+        week.monthlyHistoryId,
+        userId,
+        user.budgetMode || 'simple',
+        baseWeeklyBudget
+      );
+
+      return { success: true, message: 'Semana reabierta exitosamente' };
     }),
 
   // ============================================
@@ -1396,10 +1698,10 @@ export const budgetRouter = createTRPCRouter({
       if (!user) return null;
 
       // AUTO-CORRECCIÓN: Verificar y recuperar todas las semanas del mes
-      await ensureWeek1Exists(ctx, userId, input.year, input.month, user.monthlyBudget || 0);
+      await ensureWeek1Exists(ctx, userId, input.year, input.month, user.monthlyBudget || 0, user.budgetMode || 'simple');
 
       // AUTO-CORRECCIÓN: Validar y corregir fechas de semanas existentes
-      await validateAndFixExistingWeeks(ctx, userId, input.year, input.month, user.monthlyBudget || 0);
+      await validateAndFixExistingWeeks(ctx, userId, input.year, input.month, user.monthlyBudget || 0, user.budgetMode || 'simple');
 
       // AUTO-CORRECCIÓN: Recalcular montos gastados basándose en gastos reales
       await recalculateSpentAmounts(ctx, userId, input.year, input.month);
@@ -1721,7 +2023,7 @@ export const budgetRouter = createTRPCRouter({
            totalBudget: user.monthlyBudget || 0,
            totalSpent: 0,
           totalRollover: 0,
-          budgetMode: 'simple',
+          budgetMode: user.budgetMode || 'simple',
         },
        });
 
@@ -1731,7 +2033,7 @@ export const budgetRouter = createTRPCRouter({
           userId,
           week,
           monthlyHistory.id,
-          'simple',
+          user.budgetMode || 'simple',
           0
         );
       }
@@ -1861,7 +2163,7 @@ export const budgetRouter = createTRPCRouter({
            totalBudget: user.monthlyBudget || 0,
            totalSpent: 0,
           totalRollover: 0,
-          budgetMode: 'simple',
+          budgetMode: user.budgetMode || 'simple',
         },
        });
 
@@ -1871,7 +2173,7 @@ export const budgetRouter = createTRPCRouter({
           userId,
           week,
           monthlyHistory.id,
-          'simple',
+          user.budgetMode || 'simple',
           0
         );
       }
@@ -1985,6 +2287,142 @@ export const budgetRouter = createTRPCRouter({
         message: `Semanas validadas y corregidas: ${fixedWeeks} corregidas, ${createdWeeks} creadas`,
         fixedWeeks,
         createdWeeks
+      };
+    }),
+
+  forceRecalculateRollovers: protectedProcedure
+    .input(getMonthDataSchema)
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+      const user = await ctx.db.user.findUnique({
+        where: { id: userId },
+      });
+      if (!user) throw new Error('Usuario no encontrado');
+
+      // Obtener el historial mensual
+      const monthlyHistory = await ctx.db.monthlyHistory.findUnique({
+        where: {
+          userId_year_month: {
+            userId: userId,
+            year: input.year,
+            month: input.month,
+          },
+        },
+        include: {
+          weeks: {
+            orderBy: { weekNumber: 'asc' },
+          },
+        },
+      });
+
+      if (!monthlyHistory) throw new Error('Historial mensual no encontrado');
+
+      // Calcular el presupuesto semanal base
+      const baseWeeklyBudget = (user.monthlyBudget || 0) / monthlyHistory.weeks.length;
+
+      // Recalcular TODOS los rollovers del mes en cascada
+      await recalculateAllRollovers(
+        ctx,
+        monthlyHistory.id,
+        userId,
+        monthlyHistory.budgetMode ?? 'simple',
+        baseWeeklyBudget
+      );
+
+      // Obtener las semanas actualizadas para mostrar en el resultado
+      const updatedWeeks = await ctx.db.week.findMany({
+        where: {
+          monthlyHistoryId: monthlyHistory.id,
+        },
+        orderBy: { weekNumber: 'asc' },
+      });
+
+      return {
+        success: true,
+        message: 'Rollovers recalculados exitosamente',
+        weeks: updatedWeeks.map((w) => ({
+          weekNumber: w.weekNumber,
+          weeklyBudget: w.weeklyBudget,
+          spentAmount: w.spentAmount,
+          rolloverAmount: w.rolloverAmount,
+          isClosed: w.isClosed,
+        })),
+      };
+    }),
+
+  fixAllBudgetModes: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const userId = ctx.session.user.id;
+      const user = await ctx.db.user.findUnique({
+        where: { id: userId },
+      });
+      if (!user) throw new Error('Usuario no encontrado');
+
+      const userBudgetMode = user.budgetMode || 'simple';
+
+      // Obtener todos los historiales mensuales del usuario
+      const monthlyHistories = await ctx.db.monthlyHistory.findMany({
+        where: { userId: userId },
+      });
+
+      let updatedCount = 0;
+
+      // Actualizar todos los historiales mensuales que tengan un modo diferente
+      for (const history of monthlyHistories) {
+        if (history.budgetMode !== userBudgetMode) {
+          await ctx.db.monthlyHistory.update({
+            where: { id: history.id },
+            data: { budgetMode: userBudgetMode },
+          });
+          updatedCount++;
+
+          // Si se cambió a modo simple, eliminar todas las asignaciones de categorías
+          if (userBudgetMode === 'simple') {
+            await ctx.db.weekCategory.deleteMany({
+              where: {
+                week: {
+                  monthlyHistoryId: history.id,
+                },
+              },
+            });
+          }
+          // Si se cambió a modo categorizado, crear las asignaciones si no existen
+          else if (userBudgetMode === 'categorized') {
+            const categories = await ctx.db.category.findMany({
+              where: { userId: userId },
+            });
+
+            const weeks = await ctx.db.week.findMany({
+              where: { monthlyHistoryId: history.id },
+            });
+
+            for (const week of weeks) {
+              // Eliminar asignaciones existentes
+              await ctx.db.weekCategory.deleteMany({
+                where: { weekId: week.id },
+              });
+
+              // Crear nuevas asignaciones
+              for (const category of categories) {
+                await ctx.db.weekCategory.create({
+                  data: {
+                    weekId: week.id,
+                    categoryId: category.id,
+                    allocatedAmount: (week.weeklyBudget * category.allocation) / 100,
+                    spentAmount: 0,
+                  },
+                });
+              }
+            }
+          }
+        }
+      }
+
+      return {
+        success: true,
+        message: `Se corrigieron ${updatedCount} historiales mensuales`,
+        updatedCount,
+        currentMode: userBudgetMode,
       };
     }),
 

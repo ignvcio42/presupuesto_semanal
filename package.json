@@ -21,6 +21,7 @@
     "@mantine/dates": "^8.3.3",
     "@mantine/form": "^8.3.3",
     "@mantine/hooks": "^8.3.3",
+    "@mantine/modals": "^8.3.3",
     "@mantine/notifications": "^8.3.3",
     "@prisma/client": "^5.14.0",
     "@t3-oss/env-nextjs": "^0.10.1",

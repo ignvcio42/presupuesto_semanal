@@ -112,6 +112,29 @@ export function BudgetDashboard() {
   const closeWeek = api.budget.closeWeek.useMutation({
     onSuccess: () => {
       void refetchWeeks();
+      notifications.show({
+        title: 'Semana cerrada',
+        message: 'La semana ha sido cerrada exitosamente',
+        color: 'green',
+      });
+    },
+  });
+
+  const reopenWeek = api.budget.reopenWeek.useMutation({
+    onSuccess: () => {
+      void refetchWeeks();
+      notifications.show({
+        title: 'Semana reabierta',
+        message: 'La semana ha sido reabierta exitosamente y los rollovers han sido recalculados',
+        color: 'green',
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        title: 'Error',
+        message: error.message,
+        color: 'red',
+      });
     },
   });
 
@@ -225,6 +248,10 @@ export function BudgetDashboard() {
     if (confirm(message)) {
       await closeWeek.mutateAsync({ weekId });
     }
+  };
+
+  const handleReopenWeek = async (weekId: string) => {
+    await reopenWeek.mutateAsync({ weekId });
   };
 
   const handleUpdateSettings = async (values: typeof settingsForm.values) => {
@@ -477,6 +504,7 @@ export function BudgetDashboard() {
                       <WeekCard
                         week={currentWeek}
                         onCloseWeek={handleCloseWeek}
+                        onReopenWeek={handleReopenWeek}
                         isCurrentWeek={true}
                         budgetMode={monthlyBudgetMode as 'simple' | 'categorized'}
                         onExpenseUpdate={() => {
@@ -541,7 +569,7 @@ export function BudgetDashboard() {
                 {/* Modal del formulario de gastos para mobile */}
                 <ExpenseForm
                   categories={categories}
-                  budgetMode={user?.budgetMode as 'simple' | 'categorized' | undefined}
+                  budgetMode={monthlyBudgetMode as 'simple' | 'categorized' | undefined}
                   opened={expenseFormOpened}
                   onClose={() => setExpenseFormOpened(false)}
                   onSuccess={() => {
@@ -597,6 +625,7 @@ export function BudgetDashboard() {
                   <WeekCard
                     week={week}
                     onCloseWeek={handleCloseWeek}
+                    onReopenWeek={handleReopenWeek}
                     isCurrentWeek={week.weekNumber === currentWeekNumber}
                     budgetMode={monthlyBudgetMode as 'simple' | 'categorized'}
                     onExpenseUpdate={() => {
@@ -684,7 +713,7 @@ export function BudgetDashboard() {
                 >
                   Recargar Datos
                 </Button>
-                <Button
+                {user?.role === 'admin' && <Button
                   variant="outline"
                   color="red"
                   onClick={handleResetBudget}
@@ -692,6 +721,7 @@ export function BudgetDashboard() {
                 >
                   Reiniciar Todo
                 </Button>
+                }
               </Group>
               
               <Group>
