@@ -171,14 +171,14 @@ export default function AdminDashboard() {
   };
 
   // Análisis de gastos por categoría
-  const getCategoryAnalysis = (expenses: any[]) => {
+  const getCategoryAnalysis = (expenses: any[]): Array<{ name: string; amount: number }> => {
     if (!expenses || expenses.length === 0) return [];
     
-    const categoryTotals = expenses.reduce((acc, expense) => {
+    const categoryTotals: Record<string, number> = expenses.reduce((acc, expense) => {
       const categoryName = expense.category?.name || 'Sin categoría';
       acc[categoryName] = (acc[categoryName] || 0) + expense.amount;
       return acc;
-    }, {});
+    }, {} as Record<string, number>);
 
     return Object.entries(categoryTotals)
       .map(([name, amount]) => ({ name, amount: amount as number }))
@@ -418,6 +418,7 @@ export default function AdminDashboard() {
                             <div>
                               <Group gap="xs">
                                 {user.role === 'admin' && <IconShield size={14} color="red" />}
+                                {user.role === 'user' && <IconUser size={14} color="blue" />}
                                 <Text fw={500} size="sm">{user.name}</Text>
                               </Group>
                               <Text size="xs" c="dimmed">{user.email}</Text>
