@@ -2608,4 +2608,72 @@ export const budgetRouter = createTRPCRouter({
 
       return { success: true, message: 'Usuario eliminado correctamente' };
     }),
- });
+
+  changeUserRole: protectedProcedure
+    .input(z.object({
+      userId: z.string(),
+      role: z.enum(['user', 'admin']),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const currentUserId = ctx.session.user.id;
+      
+      // Verificar que el usuario actual es admin
+      const currentUser = await ctx.db.user.findUnique({
+        where: { id: currentUserId }
+      });
+      
+      if (!currentUser || currentUser.role !== 'admin') {
+        throw new Error('No tienes permisos para cambiar roles');
+      }
+
+      // Verificar que el usuario a cambiar existe
+      const userToChange = await ctx.db.user.findUnique({
+        where: { id: input.userId }
+      });
+
+      if (!userToChange) {
+        throw new Error('Usuario no encontrado');
+      }
+
+      // No permitir cambiar el rol del admin actual
+      if (input.userId === currentUserId) {
+        throw new Error('No puedes cambiar tu propio rol');
+      }
+
+      // Actualizar el rol
+      await ctx.db.user.update({
+        where: { id: input.userId },
+        data: { role: input.role },
+      });
+
+      return { success: true, message: 'Rol actualizado correctamente' };
+    }),
+
+  getUserExpenses: protectedProcedure
+    .input(z.object({
+      userId: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const currentUserId = ctx.session.user.id;
+      
+      // Verificar que el usuario actual es admin
+      const currentUser = await ctx.db.user.findUnique({
+        where: { id: currentUserId }
+      });
+      
+      if (!currentUser || currentUser.role !== 'admin') {
+        throw new Error('No tienes permisos para ver gastos de otros usuarios');
+      }
+
+      // Obtener todos los gastos del usuario con sus categorías
+      const expenses = await ctx.db.expense.findMany({
+        where: { userId: input.userId },
+        include: {
+          category: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return expenses;
+    }),
+});

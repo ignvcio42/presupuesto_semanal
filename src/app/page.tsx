@@ -13,20 +13,20 @@ export default function Home() {
   const utils = api.useUtils();
   const previousUserId = useRef<string | null>(null);
 
-  console.log('Home - Session:', session);
+  // console.log('Home - Session:', session);
   console.log('Home - Status:', status);
-  console.log('Home - Current path:', typeof window !== 'undefined' ? window.location.pathname : 'server');
+  // console.log('Home - Current path:', typeof window !== 'undefined' ? window.location.pathname : 'server');
 
   useEffect(() => {
     console.log('Home useEffect - Status:', status, 'Session:', session);
     
     if (status === 'loading') {
-      console.log('Home - Status is loading, waiting...');
+      // console.log('Home - Status is loading, waiting...');
       return;
     }
     
     if (!session) {
-      console.log('Home - No session, redirecting to signin...');
+      // console.log('Home - No session, redirecting to signin...');
       router.push('/auth/signin');
       return;
     }
@@ -35,7 +35,7 @@ export default function Home() {
 
     // Si cambió el usuario, limpiar cache
     if (previousUserId.current && previousUserId.current !== session.user.id) {
-      console.log('Home - User changed, invalidating cache...');
+      // console.log('Home - User changed, invalidating cache...');
       void utils.invalidate();
     }
     
@@ -43,7 +43,7 @@ export default function Home() {
   }, [session, status, router, utils]);
 
   if (status === 'loading') {
-    console.log('Home - Rendering loading state');
+    // console.log('Home - Rendering loading state');
     return (
       <Center style={{ minHeight: '100vh' }}>
         <Loader size="lg" />
@@ -52,7 +52,7 @@ export default function Home() {
   }
 
   if (!session) {
-    console.log('Home - No session, returning null (will redirect)');
+    // console.log('Home - No session, returning null (will redirect)');
     return null; // Se redirigirá automáticamente
   }
 

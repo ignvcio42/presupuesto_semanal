@@ -18,11 +18,11 @@ export function BudgetApp() {
     retryDelay: 1000, // Esperar 1 segundo entre reintentos
   });
 
-  console.log('BudgetApp - Session:', session);
-  console.log('BudgetApp - User:', user);
-  console.log('BudgetApp - Loading:', isLoading);
-  console.log('BudgetApp - Error:', error);
-  console.log('BudgetApp - isSetupComplete:', isSetupComplete);
+  // console.log('BudgetApp - Session:', session);
+  // console.log('BudgetApp - User:', user);
+  // console.log('BudgetApp - Loading:', isLoading);
+  // console.log('BudgetApp - Error:', error);
+  // console.log('BudgetApp - isSetupComplete:', isSetupComplete);
 
   // Resetear estado cuando cambia el usuario
   useEffect(() => {

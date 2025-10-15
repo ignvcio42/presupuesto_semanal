@@ -32,6 +32,9 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess,
   const [internalOpened, setInternalOpened] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  // Obtener el usuario actual
+  const { data: user } = api.budget.getUser.useQuery();
+  
   // Usar el estado externo si se proporciona, sino usar el interno
   const opened = externalOpened !== undefined ? externalOpened : internalOpened;
   const setOpened = onClose ? onClose : setInternalOpened;
@@ -115,18 +118,18 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess,
   }
   
   // Debug logs
-  console.log('Date validation debug:', {
-    selectedDate: selectedDate,
-    selectedDateNormalized: selectedDateNormalized,
-    today: today,
-    selectedYear: selectedYear,
-    selectedMonth: selectedMonth,
-    todayYear: todayYear,
-    todayMonth: todayMonth,
-    selectedWeek: selectedWeek,
-    currentWeek: currentWeek,
-    isPastWeek: isPastWeek,
-  });
+  // console.log('Date validation debug:', {
+  //   selectedDate: selectedDate,
+  //   selectedDateNormalized: selectedDateNormalized,
+  //   today: today,
+  //   selectedYear: selectedYear,
+  //   selectedMonth: selectedMonth,
+  //   todayYear: todayYear,
+  //   todayMonth: todayMonth,
+  //   selectedWeek: selectedWeek,
+  //   currentWeek: currentWeek,
+  //   isPastWeek: isPastWeek,
+  // });
 
   const handleSubmit = async (values: CreateExpenseInput) => {
     // Validación adicional antes de enviar
@@ -208,9 +211,9 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess,
               placeholder="Selecciona la fecha"
               value={form.values.date}
               onChange={(value) => {
-                console.log('DateInput onChange - raw value:', value);
+                // console.log('DateInput onChange - raw value:', value);
                 const dateValue = value ? createDateFromDateInput(new Date(value)) : createLocalDate();
-                console.log('DateInput onChange - normalized dateValue:', dateValue);
+                // console.log('DateInput onChange - normalized dateValue:', dateValue);
                 form.setFieldValue('date', dateValue);
               }}
             />
@@ -306,9 +309,9 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess,
               valueFormat="DD/MM/YYYY"
               value={form.values.date}
               onChange={(value) => {
-                console.log('DateInput onChange - raw value:', value);
+                // console.log('DateInput onChange - raw value:', value);
                 const dateValue = value ? createDateFromDateInput(new Date(value)) : createLocalDate();
-                console.log('DateInput onChange - normalized dateValue:', dateValue);
+                // console.log('DateInput onChange - normalized dateValue:', dateValue);
                 form.setFieldValue('date', dateValue);
               }}
             />
@@ -358,6 +361,7 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess,
               >
                 Cancelar
               </Button>
+              {user?.role === 'admin' && (
               <Button
                 variant="outline"
                 color="orange"
@@ -369,6 +373,7 @@ export function ExpenseForm({ categories, budgetMode = 'categorized', onSuccess,
               >
                 Test Submit
               </Button>
+              )}
               <Button
                 type="submit"
                 loading={isSubmitting}

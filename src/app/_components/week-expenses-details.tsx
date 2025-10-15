@@ -245,7 +245,7 @@ export function WeekExpensesDetails({
     >
       <Stack gap="md">
         {/* Información de la semana */}
-        <Card withBorder p="sm">
+        <Card withBorder p="sm" radius="md">
           <Group justify="space-between">
             <Text size="sm" c="dimmed">
               {formatDate(startDate)} - {formatDate(endDate)}
@@ -278,8 +278,10 @@ export function WeekExpensesDetails({
           </Alert>
         ) : (
           <Stack gap="xs">
-            {expenses.map((expense) => (
-              <Card key={expense.id} withBorder p="sm">
+            {expenses
+              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+              .map((expense) => (
+              <Card key={expense.id} withBorder p="sm" radius="md">
                 <Group justify="space-between" align="flex-start">
                   <Stack gap="xs" style={{ flex: 1 }}>
                     <Group gap="xs">
@@ -296,7 +298,10 @@ export function WeekExpensesDetails({
                     <Group gap="xs">
                       <IconCalendar size={14} color="gray" />
                       <Text size="xs" c="dimmed">
-                        {formatDateSafe(expense.date, 'dd/MM/yyyy')} - ({formatDateSafe(expense.date, 'EEEE, d \'de\' MMMM')})
+                        {formatDateSafe(expense.date, 'dd/MM/yyyy')} • {formatDateSafe(expense.date, 'EEEE')} • {expense.createdAt.toLocaleTimeString('es-CL', { 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })}
                       </Text>
                       {expense.category && (
                         <>

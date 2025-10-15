@@ -344,38 +344,120 @@ export function BudgetDashboard() {
   return (
     <>
       <Header />
-      <Container size="xl" py="xl">
-      <Stack gap="md" mb="xl">
-        {/* Header principal */}
-        <Group justify="space-between" align="flex-start">
-          <div>
-            <Title order={1}>Presupuesto Semanal</Title>
-            <Group gap="md" align="center" mt="xs">
-              <Text c="dimmed" size="md">
-                {getMonthName(displayMonth)} {displayYear}
-              </Text>
-              {selectedYear && selectedMonth && (
-                <Badge color="blue" variant="light" size="sm">
-                  Historial
-                </Badge>
-              )}
-            </Group>
-          </div>
-          
-          {/* Botones de acción - Desktop */}
-          <Group className="hidden sm:flex">
-            <Button
-              variant="light"
-              size="sm"
-              onClick={() => setShowMonthSelector(true)}
-            >
-              Ver Historial
-            </Button>
+      <Container size="xl" py={{ base: "md", sm: "xl" }}>
+        <Stack gap="md" mb="xl">
+          {/* Header principal */}
+          <Group justify="space-between" align="flex-start" wrap="wrap">
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <Title 
+                order={1} 
+                size="h1"
+                style={{ wordBreak: "break-word" }}
+              >
+                Presupuesto Semanal
+              </Title>
+              <Group gap="md" align="center" mt="xs" wrap="wrap">
+                <Text c="dimmed" size="md">
+                  {getMonthName(displayMonth)} {displayYear}
+                </Text>
+                {selectedYear && selectedMonth && (
+                  <Badge color="blue" variant="light" size="sm">
+                    Historial
+                  </Badge>
+                )}
+              </Group>
+            </div>
             
-            <Badge color="blue" variant="light" size="lg">
+            {/* Botones de acción - Desktop */}
+            <Group className="hidden sm:flex" gap="sm">
+              <Button
+                variant="light"
+                size="sm"
+                onClick={() => setShowMonthSelector(true)}
+              >
+                Ver Historial
+              </Button>
+              
+              <Badge color="blue" variant="light" size="lg">
+                {formatCurrency(user.monthlyBudget || 0)} mensual
+              </Badge>
+              
+              <Select
+                value={monthlyBudgetMode}
+                onChange={(value) => {
+                  if (value && (value === 'simple' || value === 'categorized')) {
+                    updateMonthlyBudgetMode.mutate({
+                      year: displayYear,
+                      month: displayMonth,
+                      budgetMode: value,
+                    });
+                  }
+                }}
+                data={[
+                  { value: 'simple', label: 'Modo Simple' },
+                  { value: 'categorized', label: 'Modo Categorías' },
+                ]}
+                size="sm"
+                w={150}
+              />
+              
+              {monthlyBudgetMode === 'categorized' && (
+                <Button
+                  variant="light"
+                  size="sm"
+                  onClick={() => setCategorySettingsOpened(true)}
+                >
+                  Configurar Categorías
+                </Button>
+              )}
+              
+              <ActionIcon
+                variant="light"
+                size="lg"
+                onClick={() => setSettingsOpened(true)}
+              >
+                <IconSettings size={20} />
+              </ActionIcon>
+            </Group>
+          </Group>
+
+          {/* Información del presupuesto - Mobile */}
+          <Group justify="space-between" className="sm:hidden" wrap="wrap">
+            <Badge color="blue" variant="light" size="md" style={{ flexShrink: 0 }}>
               {formatCurrency(user.monthlyBudget || 0)} mensual
             </Badge>
             
+            <Group gap="xs" wrap="nowrap">
+              <Button
+                variant="light"
+                size="xs"
+                onClick={() => setShowMonthSelector(true)}
+              >
+                Historial
+              </Button>
+              
+              {monthlyBudgetMode === 'categorized' && (
+                <Button
+                  variant="light"
+                  size="xs"
+                  onClick={() => setCategorySettingsOpened(true)}
+                >
+                  Categorías
+                </Button>
+              )}
+              
+              <ActionIcon
+                variant="light"
+                size="md"
+                onClick={() => setSettingsOpened(true)}
+              >
+                <IconSettings size={18} />
+              </ActionIcon>
+            </Group>
+          </Group>
+          
+          {/* Selector de modo - Mobile */}
+          <Group justify="center" className="sm:hidden">
             <Select
               value={monthlyBudgetMode}
               onChange={(value) => {
@@ -392,86 +474,11 @@ export function BudgetDashboard() {
                 { value: 'categorized', label: 'Modo Categorías' },
               ]}
               size="sm"
-              w={150}
+              w="100%"
+              maw={250}
             />
-            
-            {monthlyBudgetMode === 'categorized' && (
-              <Button
-                variant="light"
-                size="sm"
-                onClick={() => setCategorySettingsOpened(true)}
-              >
-                Configurar Categorías
-              </Button>
-            )}
-            
-            <ActionIcon
-              variant="light"
-              size="lg"
-              onClick={() => setSettingsOpened(true)}
-            >
-              <IconSettings size={20} />
-            </ActionIcon>
           </Group>
-        </Group>
-
-        {/* Información del presupuesto - Mobile */}
-        <Group justify="space-between" className="sm:hidden">
-          <Badge color="blue" variant="light" size="md">
-            {formatCurrency(user.monthlyBudget || 0)} mensual
-          </Badge>
-          
-          <Group gap="xs">
-            <Button
-              variant="light"
-              size="xs"
-              onClick={() => setShowMonthSelector(true)}
-            >
-              Historial
-            </Button>
-            
-            {monthlyBudgetMode === 'categorized' && (
-              <Button
-                variant="light"
-                size="xs"
-                onClick={() => setCategorySettingsOpened(true)}
-              >
-                Categorías
-              </Button>
-            )}
-            
-            <ActionIcon
-              variant="light"
-              size="md"
-              onClick={() => setSettingsOpened(true)}
-            >
-              <IconSettings size={18} />
-            </ActionIcon>
-          </Group>
-        </Group>
-        
-        {/* Selector de modo - Mobile */}
-        <Group justify="center" className="sm:hidden">
-          <Select
-            value={monthlyBudgetMode}
-            onChange={(value) => {
-              if (value && (value === 'simple' || value === 'categorized')) {
-                updateMonthlyBudgetMode.mutate({
-                  year: displayYear,
-                  month: displayMonth,
-                  budgetMode: value,
-                });
-              }
-            }}
-            data={[
-              { value: 'simple', label: 'Modo Simple' },
-              { value: 'categorized', label: 'Modo Categorías' },
-            ]}
-            size="sm"
-            w={200}
-          />
-        </Group>
-      </Stack>
+        </Stack>
 
        {/* Debug Info - Solo para administradores */}
        {user?.role === 'admin' && <DebugInfo />}

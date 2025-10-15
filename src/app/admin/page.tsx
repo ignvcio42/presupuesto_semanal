@@ -21,7 +21,7 @@ import {
   Modal,
   Button,
 } from '@mantine/core';
-import { IconUsers, IconTrendingUp, IconAlertCircle, IconShield, IconTrash } from '@tabler/icons-react';
+import { IconUsers, IconTrendingUp, IconAlertCircle, IconShield, IconTrash, IconChartPie, IconEdit, IconEye, IconUser } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { api } from '~/trpc/react';
 import { formatCurrency } from '~/lib/date-utils';
@@ -32,6 +32,10 @@ export default function AdminDashboard() {
   const router = useRouter();
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
+  const [roleModalOpened, setRoleModalOpened] = useState(false);
+  const [userToChangeRole, setUserToChangeRole] = useState<any>(null);
+  const [userDetailsModalOpened, setUserDetailsModalOpened] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
 
   // Verificar si es admin
   useEffect(() => {
@@ -64,6 +68,11 @@ export default function AdminDashboard() {
   const { data: users, isLoading: usersLoading, refetch: refetchUsers } = api.budget.getAllUsers.useQuery(
     undefined,
     { enabled: session?.user.role === 'admin' }
+  );
+
+  const { data: userExpenses, isLoading: expensesLoading } = api.budget.getUserExpenses.useQuery(
+    { userId: selectedUser?.id },
+    { enabled: !!selectedUser }
   );
 
   const deleteUser = api.budget.deleteUser.useMutation({
@@ -114,12 +123,66 @@ export default function AdminDashboard() {
     },
   });
 
+  const changeUserRole = api.budget.changeUserRole.useMutation({
+    onSuccess: () => {
+      refetchUsers();
+      setRoleModalOpened(false);
+      setUserToChangeRole(null);
+      notifications.show({
+        title: 'Rol actualizado',
+        message: 'El rol del usuario se ha actualizado correctamente',
+        color: 'green',
+      });
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error.message || 'Error al cambiar rol',
+        color: 'red',
+      });
+    },
+  });
+
   const handleCreateAdmin = () => {
     createAdmin.mutateAsync({
       name: 'Administrador',
       email: 'admin@presupuesto.com',
       password: 'admin123',
     });
+  };
+
+  const handleChangeRole = (user: any) => {
+    setUserToChangeRole(user);
+    setRoleModalOpened(true);
+  };
+
+  const confirmChangeRole = async () => {
+    if (!userToChangeRole) return;
+    const newRole = userToChangeRole.role === 'admin' ? 'user' : 'admin';
+    await changeUserRole.mutateAsync({
+      userId: userToChangeRole.id,
+      role: newRole,
+    });
+  };
+
+  const handleViewUserDetails = (user: any) => {
+    setSelectedUser(user);
+    setUserDetailsModalOpened(true);
+  };
+
+  // Análisis de gastos por categoría
+  const getCategoryAnalysis = (expenses: any[]) => {
+    if (!expenses || expenses.length === 0) return [];
+    
+    const categoryTotals = expenses.reduce((acc, expense) => {
+      const categoryName = expense.category?.name || 'Sin categoría';
+      acc[categoryName] = (acc[categoryName] || 0) + expense.amount;
+      return acc;
+    }, {});
+
+    return Object.entries(categoryTotals)
+      .map(([name, amount]) => ({ name, amount: amount as number }))
+      .sort((a, b) => b.amount - a.amount);
   };
 
   if (status === 'loading' || statsLoading || usersLoading) {
@@ -263,7 +326,11 @@ export default function AdminDashboard() {
                       return (
                         <Table.Tr key={user.id}>
                           <Table.Td>
-                            <Text fw={500}>{user.name}</Text>
+                            <Group gap="xs">
+                              {user.role === 'admin' && <IconShield size={16} color="red" />}
+                              {user.role === 'user' && <IconUser size={16} color="blue" />}
+                              <Text fw={500}>{user.name}</Text>
+                            </Group>
                           </Table.Td>
                           <Table.Td>
                             <Text size="sm" c="dimmed">{user.email}</Text>
@@ -298,17 +365,36 @@ export default function AdminDashboard() {
                             </Text>
                           </Table.Td>
                           <Table.Td>
-                            {user.role !== 'admin' && (
+                            <Group gap="xs">
                               <ActionIcon
                                 variant="light"
-                                color="red"
+                                color="blue"
                                 size="sm"
-                                onClick={() => handleDeleteUser(user)}
-                                loading={deleteUser.isPending}
+                                onClick={() => handleViewUserDetails(user)}
                               >
-                                <IconTrash size={14} />
+                                <IconEye size={14} />
                               </ActionIcon>
-                            )}
+                              <ActionIcon
+                                variant="light"
+                                color="orange"
+                                size="sm"
+                                onClick={() => handleChangeRole(user)}
+                                loading={changeUserRole.isPending}
+                              >
+                                <IconEdit size={14} />
+                              </ActionIcon>
+                              {user.role !== 'admin' && (
+                                <ActionIcon
+                                  variant="light"
+                                  color="red"
+                                  size="sm"
+                                  onClick={() => handleDeleteUser(user)}
+                                  loading={deleteUser.isPending}
+                                >
+                                  <IconTrash size={14} />
+                                </ActionIcon>
+                              )}
+                            </Group>
                           </Table.Td>
                         </Table.Tr>
                       );
@@ -330,7 +416,10 @@ export default function AdminDashboard() {
                         <Stack gap="xs">
                           <Group justify="space-between" align="flex-start">
                             <div>
-                              <Text fw={500} size="sm">{user.name}</Text>
+                              <Group gap="xs">
+                                {user.role === 'admin' && <IconShield size={14} color="red" />}
+                                <Text fw={500} size="sm">{user.name}</Text>
+                              </Group>
                               <Text size="xs" c="dimmed">{user.email}</Text>
                             </div>
                             <Group gap="xs">
@@ -341,6 +430,23 @@ export default function AdminDashboard() {
                               >
                                 {user.role === 'admin' ? 'Admin' : 'Usuario'}
                               </Badge>
+                              <ActionIcon
+                                color="blue"
+                                variant="light"
+                                size="sm"
+                                onClick={() => handleViewUserDetails(user)}
+                              >
+                                <IconEye size={14} />
+                              </ActionIcon>
+                              <ActionIcon
+                                color="orange"
+                                variant="light"
+                                size="sm"
+                                onClick={() => handleChangeRole(user)}
+                                loading={changeUserRole.isPending}
+                              >
+                                <IconEdit size={14} />
+                              </ActionIcon>
                               {user.role !== 'admin' && (
                                 <ActionIcon
                                   color="red"
@@ -449,6 +555,168 @@ export default function AdminDashboard() {
               </Button>
             </Group>
           </Stack>
+        </Modal>
+
+        {/* Modal de cambio de rol */}
+        <Modal
+          opened={roleModalOpened}
+          onClose={() => {
+            setRoleModalOpened(false);
+            setUserToChangeRole(null);
+          }}
+          title="Cambiar rol de usuario"
+          size="sm"
+        >
+          <Stack gap="md">
+            <Alert icon={<IconShield size={16} />} color="orange" variant="light">
+              <Text size="sm">
+                ¿Estás seguro de que quieres cambiar el rol de este usuario?
+              </Text>
+              <Text size="xs" c="dimmed" mt="xs">
+                {userToChangeRole?.role === 'admin' 
+                  ? 'El usuario perderá permisos de administrador.'
+                  : 'El usuario obtendrá permisos de administrador.'
+                }
+              </Text>
+            </Alert>
+
+            {userToChangeRole && (
+              <Card withBorder p="sm">
+                <Group justify="space-between">
+                  <Text size="sm" fw={500}>
+                    {userToChangeRole.name}
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    {userToChangeRole.email}
+                  </Text>
+                </Group>
+                <Group mt="xs">
+                  <Text size="xs" c="dimmed">Rol actual:</Text>
+                  <Badge size="xs" variant="light" color="blue">
+                    {userToChangeRole.role === 'admin' ? 'Admin' : 'Usuario'}
+                  </Badge>
+                  <Text size="xs" c="dimmed">→</Text>
+                  <Badge size="xs" variant="light" color="orange">
+                    {userToChangeRole.role === 'admin' ? 'Usuario' : 'Admin'}
+                  </Badge>
+                </Group>
+              </Card>
+            )}
+
+            <Group justify="flex-end" mt="md">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setRoleModalOpened(false);
+                  setUserToChangeRole(null);
+                }}
+                disabled={changeUserRole.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                color="orange"
+                onClick={confirmChangeRole}
+                loading={changeUserRole.isPending}
+              >
+                Cambiar Rol
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
+
+        {/* Modal de detalles del usuario */}
+        <Modal
+          opened={userDetailsModalOpened}
+          onClose={() => {
+            setUserDetailsModalOpened(false);
+            setSelectedUser(null);
+          }}
+          title="Análisis de gastos del usuario"
+          size="lg"
+        >
+          {selectedUser && (
+            <Stack gap="md">
+              {/* Información del usuario */}
+              <Card withBorder p="sm">
+                <Group justify="space-between">
+                  <div>
+                    <Text fw={500}>{selectedUser.name}</Text>
+                    <Text size="sm" c="dimmed">{selectedUser.email}</Text>
+                  </div>
+                  <Badge color={selectedUser.role === 'admin' ? 'red' : 'blue'} variant="light">
+                    {selectedUser.role === 'admin' ? 'Admin' : 'Usuario'}
+                  </Badge>
+                </Group>
+                <Group mt="sm" justify="space-between">
+                  <div>
+                    <Text size="xs" c="dimmed">Presupuesto mensual</Text>
+                    <Text size="sm" fw={500}>
+                      {selectedUser.monthlyBudget ? formatCurrency(selectedUser.monthlyBudget) : 'No configurado'}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed">Total gastado</Text>
+                    <Text size="sm" fw={500} c="red">
+                      {formatCurrency(selectedUser.totalSpent)}
+                    </Text>
+                  </div>
+                </Group>
+              </Card>
+
+              {/* Lista de gastos */}
+              {expensesLoading ? (
+                <Center py="xl">
+                  <Loader size="sm" />
+                </Center>
+              ) : (
+                <>
+                  <Title order={4}>
+                    <Group gap="sm">
+                      <IconChartPie size={20} />
+                      Gastos del usuario ({userExpenses?.length || 0})
+                    </Group>
+                  </Title>
+                  
+                  {userExpenses && userExpenses.length > 0 ? (
+                    <Stack gap="xs">
+                      {userExpenses.map((expense, index) => (
+                        <Group key={index} justify="space-between" align="center" p="sm" style={{ 
+                          border: '1px solid #e9ecef', 
+                          borderRadius: '6px',
+                          backgroundColor: index % 2 === 0 ? '#f8f9fa' : 'white'
+                        }}>
+                          <div style={{ flex: 1 }}>
+                            <Text size="sm" fw={500}>{expense.description}</Text>
+                            <Group gap="xs" mt={2}>
+                              <Text size="xs" c="dimmed">
+                                {expense.category?.name || 'Sin categoría'}
+                              </Text>
+                              <Text size="xs" c="dimmed">•</Text>
+                              <Text size="xs" c="dimmed">
+                                {new Date(expense.createdAt).toLocaleDateString('es-ES', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric'
+                                })}
+                              </Text>
+                            </Group>
+                          </div>
+                          <Text size="sm" fw={600} c="red">
+                            {formatCurrency(expense.amount)}
+                          </Text>
+                        </Group>
+                      ))}
+                    </Stack>
+                  ) : (
+                    <Alert color="gray">
+                      <Text size="sm">Este usuario no tiene gastos registrados.</Text>
+                    </Alert>
+                  )}
+                </>
+              )}
+            </Stack>
+          )}
         </Modal>
       </Container>
     </>
