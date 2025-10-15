@@ -174,14 +174,16 @@ export default function AdminDashboard() {
   const getCategoryAnalysis = (expenses: any[]): Array<{ name: string; amount: number }> => {
     if (!expenses || expenses.length === 0) return [];
     
-    const categoryTotals: Record<string, number> = expenses.reduce((acc, expense) => {
+    const categoryTotals: Record<string, number> = {};
+    
+    expenses.forEach((expense) => {
       const categoryName = expense.category?.name || 'Sin categoría';
-      acc[categoryName] = (acc[categoryName] || 0) + expense.amount;
-      return acc;
-    }, {} as Record<string, number>);
+      const amount = typeof expense.amount === 'number' ? expense.amount : 0;
+      categoryTotals[categoryName] = (categoryTotals[categoryName] || 0) + amount;
+    });
 
     return Object.entries(categoryTotals)
-      .map(([name, amount]) => ({ name, amount: amount as number }))
+      .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount);
   };
 
